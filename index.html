@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>訂單登記</title>
+  <style>
+    :root { --main: #06c755; --text: #222; --muted: #777; --bg: #f5f5f5; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; font-family: -apple-system, "Noto Sans TC", sans-serif; background: var(--bg); color: var(--text); }
+    .card { background: #fff; border-radius: 12px; padding: 20px; max-width: 480px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .who { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+    label { display: block; font-weight: 600; margin: 12px 0 6px; }
+    input, textarea { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; }
+    textarea { min-height: 120px; }
+    button { width: 100%; margin-top: 20px; padding: 14px; font-size: 17px; border: 0; border-radius: 8px; background: var(--main); color: #fff; }
+    button:disabled { background: #aaa; }
+    .msg { margin-top: 14px; text-align: center; }
+    .err { color: #d00; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>訂單登記</h1>
+    <div class="who" id="who">載入中…</div>
+
+    <form id="form">
+      <label for="date">登記日期</label>
+      <input type="date" id="date" required>
+
+      <label for="item">登記事項</label>
+      <textarea id="item" required placeholder="請輸入要登記的內容"></textarea>
+
+      <button type="submit" id="btn" disabled>送出</button>
+    </form>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    // ===== 只需改這兩個 =====
+    const LIFF_ID = '請填入你的 LIFF ID';          // 例：2001234567-AbCdEfGh
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
+    // ========================
+
+    const $ = (id) => document.getElementById(id);
+    let groupId = '';
+    // 冪等鍵：開一次表單一個 ID，按幾次送出都用同一個，GAS 只會寫入 Ragic 一次
+    const submitId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + '-' + Math.random().toString(36).slice(2));
+
+    function showMsg(text, isErr) {
+      $('msg').textContent = text;
+      $('msg').className = 'msg' + (isErr ? ' err' : '');
+    }
+
+    async function main() {
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) { liff.login(); return; }
+
+      // groupId 由機器人在群組貼出的連結帶進來：https://liff.line.me/{LIFF_ID}?gid=Cxxxx
+      groupId = new URLSearchParams(location.search).get('gid') || '';
+      if (!groupId) {
+        showMsg('請從群組內機器人貼出的「登記連結」開啟本表單', true);
+        return;
+      }
+
+      const profile = await liff.getProfile();
+      $('who').textContent = '登記人：' + profile.displayName;
+      $('date').value = new Date().toLocaleDateString('sv-SE'); // yyyy-mm-dd（本地時區）
+      $('btn').disabled = false;
+    }
+
+    $('form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      $('btn').disabled = true;
+      showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 45000);
+      try {
+        // 用 text/plain 避免 CORS preflight（GAS 不支援 OPTIONS）
+        const res = await fetch(GAS_URL, {
+          method: 'POST',
+          signal: ctrl.signal,
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            type: 'liff_submit',
+            submitId: submitId,
+            idToken: liff.getIDToken(),   // 後端用來驗證身分，不信任前端傳來的名字
+            groupId: groupId,
+            date: $('date').value.replace(/-/g, '/'),
+            item: $('item').value.trim(),
+          }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || '未知錯誤');
+        // 只有真正寫進 Ragic 才會有 ragicId；只看 ok:true 不算數
+        if (!data.ragicId) throw new Error('伺服器回應異常');
+
+        showMsg('✅ 已送出！群組會收到「登記成功」通知');
+        setTimeout(() => liff.closeWindow(), 1200);
+      } catch (e) {
+        // 逾時 ≠ 失敗：可能其實已寫入。再按送出也安全（同一個 submitId 不會重複建立）
+        const msg = e.name === 'AbortError'
+          ? '等候逾時，可能已經登記成功，請先看群組有沒有通知；沒有的話再按一次送出（不會重複登記）'
+          : '送出失敗：' + e.message;
+        showMsg(msg, true);
+        $('btn').disabled = false;
+      } finally {
+        clearTimeout(timer);
+      }
+    });
+
+    main().catch((e) => showMsg('初始化失敗：' + e.message, true));
+  </script>
+</body>
+</html>
