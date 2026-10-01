@@ -148,7 +148,7 @@
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || '未知錯誤');
         // 只有真正寫進 Ragic 才會有 ragicId；只看 ok:true 不算數
-        if (!data.ragicId) throw new Error('伺服器回應異常');
+        if (typeof data.ragicId !== 'number') throw new Error('伺服器回應異常');
 
         // 以填表人名義在群組發一句話，機器人收到後用 Reply（免費）回「登記成功」
         try {
