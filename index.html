@@ -5,17 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>訂單登記</title>
   <style>
-    :root { --main: #06c755; --text: #222; --muted: #777; --bg: #f5f5f5; }
+    :root { --main: #06c755; --text: #222; --muted: #777; --bg: #f5f5f5; --line: #ddd; }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 16px; font-family: -apple-system, "Noto Sans TC", sans-serif; background: var(--bg); color: var(--text); }
     .card { background: #fff; border-radius: 12px; padding: 20px; max-width: 480px; margin: 0 auto; }
     h1 { font-size: 20px; margin: 0 0 4px; }
-    .who { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
-    label { display: block; font-weight: 600; margin: 12px 0 6px; }
-    input, textarea { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; }
-    textarea { min-height: 120px; }
-    button { width: 100%; margin-top: 20px; padding: 14px; font-size: 17px; border: 0; border-radius: 8px; background: var(--main); color: #fff; }
-    button:disabled { background: #aaa; }
+    .who { color: var(--muted); font-size: 14px; margin-bottom: 8px; }
+    label, .label { display: block; font-weight: 600; margin: 16px 0 6px; }
+    input, textarea, select { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; background: #fff; color: var(--text); }
+    textarea { min-height: 80px; }
+    /* 每列兩行：等級｜數量｜✕ ／ 包裝方式（整行），手機上選項文字才不會被截斷 */
+    .row { display: grid; grid-template-columns: 1fr 90px 40px; grid-template-areas: "grade qty del" "pack pack pack";
+           gap: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 10px; }
+    .row .grade { grid-area: grade; }
+    .row .pack { grid-area: pack; }
+    .row input { grid-area: qty; text-align: center; }
+    .del { grid-area: del; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: #c00; font-size: 18px; }
+    .add { width: 100%; padding: 10px; border: 1px dashed var(--main); border-radius: 8px; background: #fff; color: var(--main); font-size: 16px; }
+    .submit { width: 100%; margin-top: 24px; padding: 14px; font-size: 17px; border: 0; border-radius: 8px; background: var(--main); color: #fff; }
+    .submit:disabled { background: #aaa; }
     .msg { margin-top: 14px; text-align: center; }
     .err { color: #d00; }
   </style>
@@ -26,20 +34,29 @@
     <div class="who" id="who">載入中…</div>
 
     <form id="form">
-      <label for="item">登記事項</label>
-      <textarea id="item" required placeholder="請輸入要登記的內容"></textarea>
+      <label for="customer">客戶</label>
+      <input id="customer" placeholder="客戶名稱">
 
-      <button type="submit" id="btn" disabled>送出</button>
+      <div class="label">明細</div>
+      <div id="rows"></div>
+      <button type="button" class="add" id="addRow">＋ 新增一列</button>
+
+      <label for="item">登記事項（備註）</label>
+      <textarea id="item" placeholder="選填"></textarea>
+
+      <button type="submit" class="submit" id="btn" disabled>送出</button>
     </form>
     <div class="msg" id="msg"></div>
   </div>
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
-    // ===== 只需改這兩個 =====
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
-    // ========================
+
+    // 下拉選項，對應 Ragic：等級＝「蛋-分級」的等級名稱；包裝方式＝子表格選項。Ragic 有新增時這裡也要加
+    const GRADES = ['良蛋', '次級蛋', '初生良蛋', '初生次蛋', '大蛋', 'NG', '破蛋'];
+    const PACKS = ['10入 良蛋', '10入 初生良蛋', '6入良蛋', '30入良蛋', '30入NG蛋'];
 
     const $ = (id) => document.getElementById(id);
     let groupId = '';
@@ -50,6 +67,43 @@
       $('msg').textContent = text;
       $('msg').className = 'msg' + (isErr ? ' err' : '');
     }
+
+    function makeSelect(cls, placeholder, options) {
+      const s = document.createElement('select');
+      s.className = cls;
+      s.required = true;
+      s.innerHTML = '<option value="">' + placeholder + '</option>'
+        + options.map((o) => '<option>' + o + '</option>').join('');
+      return s;
+    }
+
+    function addRow() {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'del';
+      del.textContent = '✕';
+      del.onclick = () => { if ($('rows').children.length > 1) row.remove(); };
+      const qty = document.createElement('input');
+      qty.type = 'number';
+      qty.inputMode = 'numeric';
+      qty.min = '1';
+      qty.step = '1';
+      qty.required = true;
+      qty.placeholder = '數量';
+      row.append(makeSelect('grade', '等級', GRADES), qty, del, makeSelect('pack', '包裝方式', PACKS));
+      $('rows').append(row);
+    }
+
+    function readRows() {
+      return [...$('rows').children].map((row) => {
+        return { grade: row.querySelector('.grade').value, pack: row.querySelector('.pack').value, qty: row.querySelector('input').value };
+      });
+    }
+
+    $('addRow').onclick = addRow;
+    addRow();
 
     async function main() {
       await liff.init({ liffId: LIFF_ID });
@@ -73,6 +127,8 @@
       showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 45000);
+      const customer = $('customer').value.trim();
+      const rows = readRows();
       try {
         // 用 text/plain 避免 CORS preflight（GAS 不支援 OPTIONS）
         const res = await fetch(GAS_URL, {
@@ -84,6 +140,8 @@
             submitId: submitId,
             idToken: liff.getIDToken(),   // 後端用來驗證身分，不信任前端傳來的名字
             groupId: groupId,
+            customer: customer,
+            rows: rows,
             item: $('item').value.trim(),
           }),
         });
@@ -92,7 +150,20 @@
         // 只有真正寫進 Ragic 才會有 ragicId；只看 ok:true 不算數
         if (!data.ragicId) throw new Error('伺服器回應異常');
 
-        showMsg('✅ 已送出！群組會收到「登記成功」通知');
+        // 以填表人名義在群組發一句話，機器人收到後用 Reply（免費）回「登記成功」
+        try {
+          await liff.sendMessages([{
+            type: 'text',
+            text: '📝 我登記了' + (customer ? '（' + customer + '）' : '') + '\n'
+              + rows.map((r) => '・' + r.grade + '　' + r.pack + ' × ' + r.qty).join('\n')
+              + '\n（登記編號 #' + data.ragicId + '）',
+          }]);
+        } catch (e) {
+          showMsg('✅ 已登記到系統，但群組通知沒發出（' + e.message + '）');
+          return;
+        }
+
+        showMsg('✅ 已送出！');
         setTimeout(() => liff.closeWindow(), 1200);
       } catch (e) {
         // 逾時 ≠ 失敗：可能其實已寫入。再按送出也安全（同一個 submitId 不會重複建立）
