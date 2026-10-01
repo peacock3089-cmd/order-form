@@ -26,9 +26,6 @@
     <div class="who" id="who">載入中…</div>
 
     <form id="form">
-      <label for="date">登記日期</label>
-      <input type="date" id="date" required>
-
       <label for="item">登記事項</label>
       <textarea id="item" required placeholder="請輸入要登記的內容"></textarea>
 
@@ -67,7 +64,6 @@
 
       const profile = await liff.getProfile();
       $('who').textContent = '登記人：' + profile.displayName;
-      $('date').value = new Date().toLocaleDateString('sv-SE'); // yyyy-mm-dd（本地時區）
       $('btn').disabled = false;
     }
 
@@ -88,7 +84,6 @@
             submitId: submitId,
             idToken: liff.getIDToken(),   // 後端用來驗證身分，不信任前端傳來的名字
             groupId: groupId,
-            date: $('date').value.replace(/-/g, '/'),
             item: $('item').value.trim(),
           }),
         });
