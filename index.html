@@ -231,6 +231,47 @@
       return out;
     }
 
+    // ---- 電腦版：複製登記編號 ----
+    async function copyText(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (e) {
+        // 舊方法備援
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.append(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        return ok;
+      }
+    }
+
+    async function showCopyFallback(text) {
+      const head = '✅ 已登記成功（請勿重新送出）\n群組通知沒發出，電腦端請在群組貼上：' + text;
+      $('msg').style.whiteSpace = 'pre-line';
+      const done = () => {
+        showMsg(head + '\n（已自動複製，到群組按 Ctrl + V、Enter 即可）\n5 秒後自動關閉');
+        setTimeout(() => liff.closeWindow(), 5000);
+      };
+      if (await copyText(text)) return done();
+
+      // 自動複製被瀏覽器擋（需要使用者點一下）→ 給一顆複製按鈕
+      showMsg(head);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'submit';
+      btn.textContent = '📋 複製「' + text + '」';
+      btn.onclick = async () => {
+        if (await copyText(text)) { btn.remove(); done(); }
+        else btn.textContent = '複製失敗，請手動在群組輸入：' + text;
+      };
+      $('msg').after(btn);
+    }
+
     $('addRow').onclick = addRow;
     addRow();
     $('shipDate').value = new Date().toLocaleDateString('sv-SE'); // 預設今天（yyyy-mm-dd，本地時區）
@@ -323,7 +364,8 @@
               + '\n（登記編號 #' + data.ragicId + '）',
           }]);
         } catch (e) {
-          showMsg('✅ 已登記成功（請勿重新送出）。群組通知沒發出，請在群組輸入：登記編號 #' + data.ragicId);
+          // 電腦版 LINE 不能代發訊息 → 把「登記編號 #N」複製好，使用者到群組貼上送出，機器人一樣會回（免費）
+          showCopyFallback('登記編號 #' + data.ragicId);
           return;
         }
 
