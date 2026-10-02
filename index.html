@@ -35,6 +35,8 @@
     .taglist label:last-child { border-bottom: 0; }
     .taglist input { width: 20px; height: 20px; margin: 0; }
     .taghint { padding: 10px 12px; color: var(--muted); font-size: 14px; }
+    input[type=file] { padding: 8px; font-size: 15px; }
+    .filelist { font-size: 14px; color: var(--muted); margin-top: 4px; }
     .msg { margin-top: 14px; text-align: center; }
     .err { color: #d00; }
   </style>
@@ -57,6 +59,14 @@
 
       <label for="item">登記事項（備註）</label>
       <textarea id="item" placeholder="選填"></textarea>
+
+      <label for="photos">照片上傳</label>
+      <input type="file" id="photos" accept="image/*" multiple>
+      <div class="filelist" id="photoList"></div>
+
+      <label for="files">檔案上傳</label>
+      <input type="file" id="files" multiple>
+      <div class="filelist" id="fileList"></div>
 
       <div class="label">通知（tag）</div>
       <div class="tagbox">
@@ -165,6 +175,62 @@
       }
     }
 
+    // ---- 照片／檔案 ----
+    const MAX_FILE_MB = 10; // 單一檔案上限（GAS 一次收的資料有上限，太大會失敗）
+
+    function showPicked(input, listId) {
+      const names = [...input.files].map((f) => f.name + '（' + (f.size / 1048576).toFixed(1) + 'MB）');
+      $(listId).textContent = names.length ? '已選 ' + names.length + ' 個：' + names.join('、') : '';
+    }
+    $('photos').onchange = () => showPicked($('photos'), 'photoList');
+    $('files').onchange = () => showPicked($('files'), 'fileList');
+
+    function toBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(',')[1]);
+        r.onerror = reject;
+        r.readAsDataURL(blob);
+      });
+    }
+
+    // 照片壓縮：長邊縮到 1600px、JPEG 品質 0.8（約 300KB，單據文字仍清楚）
+    function compressImage(file) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.width * scale);
+          c.height = Math.round(img.height * scale);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(img.src);
+          c.toBlob((b) => resolve(b || file), 'image/jpeg', 0.8);
+        };
+        img.onerror = () => resolve(file); // 讀不了（例如特殊格式）就傳原檔
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    async function readPhotos() {
+      const out = [];
+      for (const f of $('photos').files) {
+        const b = await compressImage(f);
+        const name = b === f ? f.name : f.name.replace(/\.[^.]+$/, '') + '.jpg';
+        out.push({ name: name, type: b.type || f.type, data: await toBase64(b) });
+      }
+      return out;
+    }
+
+    async function readFiles() {
+      const out = [];
+      for (const f of $('files').files) {
+        if (f.size > MAX_FILE_MB * 1048576) throw new Error('「' + f.name + '」超過 ' + MAX_FILE_MB + 'MB');
+        out.push({ name: f.name, type: f.type, data: await toBase64(f) });
+      }
+      return out;
+    }
+
     $('addRow').onclick = addRow;
     addRow();
     $('shipDate').value = new Date().toLocaleDateString('sv-SE'); // 預設今天（yyyy-mm-dd，本地時區）
@@ -203,12 +269,25 @@
     $('form').addEventListener('submit', async (ev) => {
       ev.preventDefault();
       $('btn').disabled = true;
-      showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 45000);
       const customer = $('customer').value.trim();
       const shipDate = $('shipDate').value.replace(/-/g, '/'); // Ragic 日期格式 yyyy/MM/dd
       const rows = readRows();
+
+      let photos, files;
+      try {
+        if ($('photos').files.length || $('files').files.length) showMsg('處理照片／檔案中…');
+        photos = await readPhotos();
+        files = await readFiles();
+      } catch (e) {
+        showMsg('檔案有問題：' + e.message, true);
+        $('btn').disabled = false;
+        return;
+      }
+
+      showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
+      const ctrl = new AbortController();
+      // 有附件時上傳較久，等候時間拉長
+      const timer = setTimeout(() => ctrl.abort(), photos.length || files.length ? 120000 : 45000);
       try {
         // 用 text/plain 避免 CORS preflight（GAS 不支援 OPTIONS）
         const res = await fetch(GAS_URL, {
@@ -224,6 +303,8 @@
             shipDate: shipDate,
             rows: rows,
             tags: checkedTags().map((c) => c.value),
+            photos: photos,
+            files: files,
             item: $('item').value.trim(),
           }),
         });
@@ -246,6 +327,11 @@
           return;
         }
 
+        if (data.uploadError) {
+          // 訂單已成立，只是附件沒上去；不要自動關閉，讓使用者看到提醒
+          showMsg('✅ 已登記成功（請勿重新送出），但照片／檔案上傳失敗，請到 Ragic 該筆訂單補上傳', true);
+          return;
+        }
         showMsg('✅ 已送出！');
         setTimeout(() => liff.closeWindow(), 1200);
       } catch (e) {
