@@ -113,9 +113,9 @@
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
 
-    // 下拉選項，對應 Ragic：等級＝「蛋-分級」的等級名稱；包裝方式＝子表格選項。Ragic 有新增時這裡也要加
-    const GRADES = ['良蛋', '次級蛋', '初生良蛋', '初生次蛋', '大蛋', 'NG', '破蛋'];
-    const PACKS = ['6入', '10入', '30入'];
+    // 下拉選項：表單打開後會從 Ragic 讀最新的（formInit），這裡只是讀取失敗時的備用值
+    let GRADES = ['良蛋', '次級蛋', '初生良蛋', '初生次蛋', '大蛋', 'NG', '破蛋'];
+    let PACKS = ['6入', '10入', '30入'];
 
     const $ = (id) => document.getElementById(id);
     let groupId = '';
@@ -127,13 +127,32 @@
       $('msg').className = 'msg' + (isErr ? ' err' : '');
     }
 
+    // 重填下拉選項；原本選的值若還在新清單裡就保留
+    function fillSelect(s, placeholder, options) {
+      const keep = s.value;
+      s.innerHTML = '';
+      s.append(new Option(placeholder, ''));
+      options.forEach((o) => s.append(new Option(o, o)));
+      s.value = options.indexOf(keep) >= 0 ? keep : '';
+    }
+
     function makeSelect(cls, placeholder, options) {
       const s = document.createElement('select');
       s.className = cls;
       s.required = true;
-      s.innerHTML = '<option value="">' + placeholder + '</option>'
-        + options.map((o) => '<option>' + o + '</option>').join('');
+      fillSelect(s, placeholder, options);
       return s;
+    }
+
+    // 套用 Ragic 讀回來的最新選項（空清單就沿用備用值）
+    function applyOptions(o) {
+      if (o.grades && o.grades.length) GRADES = o.grades;
+      if (o.packs && o.packs.length) PACKS = o.packs;
+      document.querySelectorAll('#rows .grade').forEach((s) => fillSelect(s, '等級', GRADES));
+      document.querySelectorAll('#rows .pack').forEach((s) => fillSelect(s, '包裝方式', PACKS));
+      [['shipMethod', o.shipMethod], ['payMethod', o.payMethod], ['invoice', o.invoice]].forEach(([id, list]) => {
+        if (list && list.length) fillSelect($(id), '（未選）', list);
+      });
     }
 
     function addRow() {
@@ -180,16 +199,18 @@
       $('tagBtn').classList.toggle('empty', !names.length);
     }
 
-    // 成員名冊從 GAS 拿（背景載入，不擋表單）；只列出在群組講過話、機器人認得的人
-    async function loadMembers() {
+    // 表單打開時跟 GAS 拿一次：最新下拉選項 + 成員名冊（背景載入，不擋表單）
+    // 成員只列出在群組講過話、機器人認得的人
+    async function loadInit() {
       try {
         const res = await fetch(GAS_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ type: 'members', idToken: liff.getIDToken(), groupId: groupId }),
+          body: JSON.stringify({ type: 'init', idToken: liff.getIDToken(), groupId: groupId }),
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
+        if (data.options) applyOptions(data.options);
         $('tagList').innerHTML = '';
         if (!data.members.length) {
           $('tagList').innerHTML = '<div class="taghint">還沒有成員資料（成員在群組講過話後才會出現）</div>';
@@ -357,7 +378,7 @@
       const profile = await liff.getProfile();
       $('who').textContent = '登記人：' + profile.displayName;
       $('btn').disabled = false;
-      loadMembers();
+      loadInit();
     }
 
     $('form').addEventListener('submit', async (ev) => {
