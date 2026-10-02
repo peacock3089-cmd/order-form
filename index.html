@@ -298,9 +298,27 @@
     addRow();
     $('shipDate').value = new Date().toLocaleDateString('sv-SE'); // 預設今天（yyyy-mm-dd，本地時區）
 
+    function idTokenExpiresSoon(minutes) {
+      const t = liff.getDecodedIDToken();
+      return !t || !t.exp || t.exp * 1000 < Date.now() + minutes * 60000;
+    }
+
     async function main() {
       await liff.init({ liffId: LIFF_ID });
-      if (!liff.isLoggedIn()) { liff.login(); return; }
+      if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+
+      // 電腦版會沿用之前存下的登入憑證，ID token 可能已過期 → GAS 驗證會失敗。
+      // 開表單時就檢查，快過期（30 分鐘內）就重新登入一次，避免填完才送不出去
+      let relogged = false;
+      try { relogged = sessionStorage.getItem('relogin') === '1'; } catch (e) {}
+      if (idTokenExpiresSoon(30) && !relogged) { // 只重登一次，避免無限跳轉
+        try { sessionStorage.setItem('relogin', '1'); } catch (e) {}
+        showMsg('登入憑證更新中…');
+        liff.logout();
+        liff.login({ redirectUri: location.href });
+        return;
+      }
+      try { sessionStorage.removeItem('relogin'); } catch (e) {}
 
       // groupId 由機器人在群組貼出的連結帶進來：https://liff.line.me/{LIFF_ID}?gid=Cxxxx
       groupId = new URLSearchParams(location.search).get('gid') || '';
@@ -332,6 +350,12 @@
     $('form').addEventListener('submit', async (ev) => {
       ev.preventDefault();
       $('btn').disabled = true;
+      // 表單開太久（超過憑證有效時間）：還沒送出任何東西，請使用者重新整理
+      if (idTokenExpiresSoon(1)) {
+        showMsg('表單開太久，登入已過期。請按右上角 ⋮ →「重新整理」後再填一次（這筆還沒送出）', true);
+        $('btn').disabled = false;
+        return;
+      }
       const customer = $('customer').value.trim();
       const shipDate = $('shipDate').value.replace(/-/g, '/'); // Ragic 日期格式 yyyy/MM/dd
       const rows = readRows();
