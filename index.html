@@ -35,6 +35,9 @@
     .taglist label:last-child { border-bottom: 0; }
     .taglist input { width: 20px; height: 20px; margin: 0; }
     .taghint { padding: 10px 12px; color: var(--muted); font-size: 14px; }
+    .advbtn { width: 100%; margin-top: 20px; padding: 10px; font-size: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fafafa; color: var(--muted); }
+    .adv { display: none; }
+    .adv.open { display: block; }
     input[type=file] { padding: 8px; font-size: 15px; }
     .filelist { font-size: 14px; color: var(--muted); margin-top: 4px; }
     .msg { margin-top: 14px; text-align: center; }
@@ -79,6 +82,9 @@
       <label for="item">備註</label>
       <textarea id="item" placeholder="選填"></textarea>
 
+      <!-- 不常用的欄位收在「進階設定」裡，預設摺疊 -->
+      <button type="button" class="advbtn" id="advBtn">進階設定 ▾</button>
+      <div class="adv" id="adv">
       <label for="amount">匯款金額</label>
       <input type="number" id="amount" inputmode="numeric" min="0" step="1" placeholder="選填">
 
@@ -95,6 +101,7 @@
         <button type="button" class="tagbtn empty" id="tagBtn">不通知</button>
         <div class="taglist" id="tagList"><div class="taghint">載入成員中…</div></div>
       </div>
+      </div><!-- /adv -->
 
       <button type="submit" class="submit" id="btn" disabled>送出</button>
     </form>
@@ -153,6 +160,12 @@
         return { grade: row.querySelector('.grade').value, pack: row.querySelector('.pack').value, qty: row.querySelector('input').value };
       });
     }
+
+    // ---- 進階設定（匯款金額／照片／檔案／通知）：預設摺疊 ----
+    $('advBtn').onclick = () => {
+      const open = $('adv').classList.toggle('open');
+      $('advBtn').textContent = open ? '進階設定 ▴' : '進階設定 ▾';
+    };
 
     // ---- 通知（tag）：預設空白，點開勾選多人 ----
     $('tagBtn').onclick = () => $('tagList').classList.toggle('open');
