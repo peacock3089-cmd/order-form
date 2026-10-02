@@ -47,18 +47,40 @@
     <div class="who" id="who">載入中…</div>
 
     <form id="form">
-      <label for="customer">客戶</label>
-      <input id="customer" placeholder="客戶名稱">
-
+      <!-- 欄位順序與機器人回覆格式一致 -->
       <label for="shipDate">出貨日期</label>
       <input type="date" id="shipDate" required>
 
-      <div class="label">明細</div>
+      <label for="shipMethod">出貨方式</label>
+      <select id="shipMethod">
+        <option value="">（未選）</option>
+        <option>自取</option><option>親送</option><option>黑貓</option><option>大榮</option>
+      </select>
+
+      <label for="customer">客戶</label>
+      <input id="customer" placeholder="客戶名稱" required>
+
+      <div class="label">出貨明細</div>
       <div id="rows"></div>
       <button type="button" class="add" id="addRow">＋ 新增一列</button>
 
-      <label for="item">登記事項（備註）</label>
+      <label for="payMethod">結帳方式</label>
+      <select id="payMethod">
+        <option value="">（未選）</option>
+        <option>月結</option><option>匯款</option><option>收現</option><option>黑貓貨到付款</option>
+      </select>
+
+      <label for="invoice">發票方式</label>
+      <select id="invoice">
+        <option value="">（未選）</option>
+        <option>二聯</option><option>三聯</option>
+      </select>
+
+      <label for="item">備註</label>
       <textarea id="item" placeholder="選填"></textarea>
+
+      <label for="amount">匯款金額</label>
+      <input type="number" id="amount" inputmode="numeric" min="0" step="1" placeholder="選填">
 
       <label for="photos">照片上傳</label>
       <input type="file" id="photos" accept="image/*" multiple>
@@ -342,6 +364,10 @@
             groupId: groupId,
             customer: customer,
             shipDate: shipDate,
+            shipMethod: $('shipMethod').value,
+            payMethod: $('payMethod').value,
+            invoice: $('invoice').value,
+            amount: $('amount').value,
             rows: rows,
             tags: checkedTags().map((c) => c.value),
             photos: photos,
