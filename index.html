@@ -24,6 +24,17 @@
     .add { width: 100%; padding: 10px; border: 1px dashed var(--main); border-radius: 8px; background: #fff; color: var(--main); font-size: 16px; }
     .submit { width: 100%; margin-top: 24px; padding: 14px; font-size: 17px; border: 0; border-radius: 8px; background: var(--main); color: #fff; }
     .submit:disabled { background: #aaa; }
+    /* 通知（tag）下拉多選 */
+    .tagbox { position: relative; }
+    .tagbtn { width: 100%; padding: 10px; font-size: 16px; text-align: left; border: 1px solid #ccc; border-radius: 8px; background: #fff; color: var(--text); }
+    .tagbtn.empty { color: #999; }
+    .tagbtn::after { content: '▾'; float: right; color: var(--muted); }
+    .taglist { display: none; margin-top: 4px; max-height: 240px; overflow-y: auto; border: 1px solid #ccc; border-radius: 8px; background: #fff; }
+    .taglist.open { display: block; }
+    .taglist label { display: flex; align-items: center; gap: 10px; margin: 0; padding: 10px 12px; font-weight: normal; border-bottom: 1px solid #eee; }
+    .taglist label:last-child { border-bottom: 0; }
+    .taglist input { width: 20px; height: 20px; margin: 0; }
+    .taghint { padding: 10px 12px; color: var(--muted); font-size: 14px; }
     .msg { margin-top: 14px; text-align: center; }
     .err { color: #d00; }
   </style>
@@ -46,6 +57,12 @@
 
       <label for="item">登記事項（備註）</label>
       <textarea id="item" placeholder="選填"></textarea>
+
+      <div class="label">通知（tag）</div>
+      <div class="tagbox">
+        <button type="button" class="tagbtn empty" id="tagBtn">不通知</button>
+        <div class="taglist" id="tagList"><div class="taghint">載入成員中…</div></div>
+      </div>
 
       <button type="submit" class="submit" id="btn" disabled>送出</button>
     </form>
@@ -105,6 +122,49 @@
       });
     }
 
+    // ---- 通知（tag）：預設空白，點開勾選多人 ----
+    $('tagBtn').onclick = () => $('tagList').classList.toggle('open');
+
+    function checkedTags() {
+      return [...$('tagList').querySelectorAll('input:checked')];
+    }
+
+    function updateTagBtn() {
+      const names = checkedTags().map((c) => c.dataset.name);
+      $('tagBtn').textContent = names.length ? names.join('、') : '不通知';
+      $('tagBtn').classList.toggle('empty', !names.length);
+    }
+
+    // 成員名冊從 GAS 拿（背景載入，不擋表單）；只列出在群組講過話、機器人認得的人
+    async function loadMembers() {
+      try {
+        const res = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ type: 'members', idToken: liff.getIDToken(), groupId: groupId }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+        $('tagList').innerHTML = '';
+        if (!data.members.length) {
+          $('tagList').innerHTML = '<div class="taghint">還沒有成員資料（成員在群組講過話後才會出現）</div>';
+          return;
+        }
+        data.members.forEach((m) => {
+          const label = document.createElement('label');
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.value = m.uid;
+          cb.dataset.name = m.name;
+          cb.onchange = updateTagBtn;
+          label.append(cb, document.createTextNode(m.name));
+          $('tagList').append(label);
+        });
+      } catch (e) {
+        $('tagList').innerHTML = '<div class="taghint">成員載入失敗，這次無法 tag（' + e.message + '）</div>';
+      }
+    }
+
     $('addRow').onclick = addRow;
     addRow();
     $('shipDate').value = new Date().toLocaleDateString('sv-SE'); // 預設今天（yyyy-mm-dd，本地時區）
@@ -137,6 +197,7 @@
       const profile = await liff.getProfile();
       $('who').textContent = '登記人：' + profile.displayName;
       $('btn').disabled = false;
+      loadMembers();
     }
 
     $('form').addEventListener('submit', async (ev) => {
@@ -162,6 +223,7 @@
             customer: customer,
             shipDate: shipDate,
             rows: rows,
+            tags: checkedTags().map((c) => c.value),
             item: $('item').value.trim(),
           }),
         });
