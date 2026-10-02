@@ -116,6 +116,14 @@
         return;
       }
 
+      // 送出後要以本人名義在群組發訊息，沒授權就先跳授權畫面（授權完會自動回到表單），不要等填完才失敗
+      const perm = await liff.permission.query('chat_message.write');
+      if (perm.state === 'prompt') {
+        showMsg('請先按「許可」，允許傳送訊息到聊天室…');
+        await liff.permission.requestAll();
+        return;
+      }
+
       const profile = await liff.getProfile();
       $('who').textContent = '登記人：' + profile.displayName;
       $('btn').disabled = false;
@@ -159,7 +167,7 @@
               + '\n（登記編號 #' + data.ragicId + '）',
           }]);
         } catch (e) {
-          showMsg('✅ 已登記到系統，但群組通知沒發出（' + e.message + '）');
+          showMsg('✅ 已登記成功（請勿重新送出）。群組通知沒發出，請在群組輸入：登記編號 #' + data.ragicId);
           return;
         }
 
