@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>進貨登記</title>
+  <style>
+    :root { --main: #06c755; --text: #222; --muted: #777; --bg: #f5f5f5; --line: #ddd; --bad: #d00; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; font-family: -apple-system, "Noto Sans TC", sans-serif; background: var(--bg); color: var(--text); }
+    .card { background: #fff; border-radius: 12px; padding: 20px; max-width: 480px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .who { color: var(--muted); font-size: 14px; margin-bottom: 8px; }
+    label, .label { display: block; font-weight: 600; margin: 16px 0 6px; }
+    input, textarea, select { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; background: #fff; color: var(--text); }
+    textarea { min-height: 70px; }
+    /* 每個棟別分群一區 */
+    .block { margin-top: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+    .block h2 { font-size: 17px; margin: 0 0 8px; }
+    .sub { font-size: 14px; color: var(--muted); margin: 10px 0 6px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+    .cell { display: flex; align-items: center; gap: 6px; }
+    .cell span { flex: none; width: 64px; font-size: 15px; }
+    .cell input { text-align: right; padding: 8px; }
+    .check { margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 15px; background: #f3f3f3; }
+    .check.ok { background: #e8f8ee; color: #087a38; }
+    .check.bad { background: #fdecec; color: var(--bad); }
+    .submit { width: 100%; margin-top: 24px; padding: 14px; font-size: 17px; border: 0; border-radius: 8px; background: var(--main); color: #fff; }
+    .submit:disabled { background: #aaa; }
+    .msg { margin-top: 14px; text-align: center; white-space: pre-line; }
+    .err { color: var(--bad); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>進貨登記</h1>
+    <div class="who" id="who">載入中…</div>
+
+    <form id="form">
+      <label for="date">登記日期</label>
+      <input type="date" id="date" required>
+
+      <label for="type">類型</label>
+      <select id="type"></select>
+
+      <div id="blocks"></div>
+
+      <label for="note">備註</label>
+      <textarea id="note" placeholder="選填"></textarea>
+
+      <button type="submit" class="submit" id="btn" disabled>送出</button>
+    </form>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    const LIFF_ID = '2011822642-ulMcTzMV';
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
+
+    // 備用值：表單打開後會從 Ragic 讀最新的（棟別分群、等級、進貨/報廢）
+    let OPTS = {
+      houseGroups: [{ name: '第一/二', houses: ['第一棟', '第二棟'] }, { name: '第三/四', houses: ['第三棟', '第四棟'] }],
+      grades: ['良蛋', '次級蛋', '初生良蛋', '初生次蛋', '大蛋', 'NG', '破蛋'],
+      stockTypes: ['進貨', '報廢'],
+    };
+
+    const $ = (id) => document.getElementById(id);
+    let groupId = '';
+    const submitId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + '-' + Math.random().toString(36).slice(2));
+    const fmt = (n) => Number(n).toLocaleString('en-US');
+
+    function showMsg(text, isErr) {
+      $('msg').textContent = text;
+      $('msg').className = 'msg' + (isErr ? ' err' : '');
+    }
+
+    // ---- 畫表單：每個棟別分群一區（各棟數量＋各等級數量＋即時驗算） ----
+    function numInput(kind, name) {
+      const div = document.createElement('div');
+      div.className = 'cell';
+      const span = document.createElement('span');
+      span.textContent = name;
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.inputMode = 'numeric';
+      inp.min = '0';
+      inp.step = '1';
+      inp.dataset.kind = kind;
+      inp.dataset.name = name;
+      inp.oninput = updateChecks;
+      div.append(span, inp);
+      return div;
+    }
+
+    function render() {
+      const keep = readBlocks(); // 重畫時保留已填的數字
+      $('blocks').innerHTML = '';
+      OPTS.houseGroups.forEach((g) => {
+        const block = document.createElement('div');
+        block.className = 'block';
+        block.dataset.group = g.name;
+        const h2 = document.createElement('h2');
+        h2.textContent = '【' + g.name + '】';
+        const subH = document.createElement('div'); subH.className = 'sub'; subH.textContent = '各棟數量';
+        const gridH = document.createElement('div'); gridH.className = 'grid';
+        g.houses.forEach((h) => gridH.append(numInput('house', h)));
+        const subG = document.createElement('div'); subG.className = 'sub'; subG.textContent = '各等級數量';
+        const gridG = document.createElement('div'); gridG.className = 'grid';
+        OPTS.grades.forEach((x) => gridG.append(numInput('grade', x)));
+        const check = document.createElement('div'); check.className = 'check';
+        block.append(h2, subH, gridH, subG, gridG, check);
+        $('blocks').append(block);
+      });
+      keep.forEach((b) => {
+        const block = [...document.querySelectorAll('.block')].find((x) => x.dataset.group === b.group);
+        if (!block) return;
+        block.querySelectorAll('input').forEach((inp) => {
+          const v = (inp.dataset.kind === 'house' ? b.houses : b.grades)[inp.dataset.name];
+          if (v) inp.value = v;
+        });
+      });
+      updateChecks();
+    }
+
+    function readBlocks() {
+      return [...document.querySelectorAll('.block')].map((block) => {
+        const b = { group: block.dataset.group, houses: {}, grades: {} };
+        block.querySelectorAll('input').forEach((inp) => {
+          if (inp.value !== '') (inp.dataset.kind === 'house' ? b.houses : b.grades)[inp.dataset.name] = Number(inp.value);
+        });
+        return b;
+      });
+    }
+
+    const sum = (obj) => Object.values(obj).reduce((s, n) => s + (Number(n) || 0), 0);
+
+    // 各棟合計 vs 各等級合計；全部對得上才能送出
+    function updateChecks() {
+      let anyFilled = false;
+      let allOk = true;
+      document.querySelectorAll('.block').forEach((block) => {
+        const b = readBlocks().find((x) => x.group === block.dataset.group);
+        const hs = sum(b.houses);
+        const gs = sum(b.grades);
+        const check = block.querySelector('.check');
+        if (!hs && !gs) {
+          check.className = 'check';
+          check.textContent = '沒填就不送出這一區';
+          return;
+        }
+        anyFilled = true;
+        if (hs === gs) {
+          check.className = 'check ok';
+          check.textContent = '✅ 總數 ' + fmt(hs) + '，各等級合計 ' + fmt(gs) + '，相符';
+        } else {
+          allOk = false;
+          check.className = 'check bad';
+          check.textContent = '❌ 總數 ' + fmt(hs) + '，各等級合計 ' + fmt(gs) + '，差 ' + fmt(Math.abs(hs - gs)) + ' 顆';
+        }
+      });
+      $('btn').dataset.ready = anyFilled && allOk ? '1' : '';
+    }
+
+    function fillTypes() {
+      const keep = $('type').value;
+      $('type').innerHTML = '';
+      OPTS.stockTypes.forEach((t) => $('type').append(new Option(t, t)));
+      if (OPTS.stockTypes.indexOf(keep) >= 0) $('type').value = keep;
+    }
+
+    // ---- 從 GAS 讀最新選項（背景，不擋表單） ----
+    async function loadInit() {
+      try {
+        const res = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ type: 'init', idToken: liff.getIDToken(), groupId: groupId }),
+        });
+        const data = await res.json();
+        if (!data.ok || !data.options) return;
+        const o = data.options;
+        if (o.houseGroups && o.houseGroups.length) OPTS.houseGroups = o.houseGroups;
+        if (o.grades && o.grades.length) OPTS.grades = o.grades;
+        if (o.stockTypes && o.stockTypes.length) OPTS.stockTypes = o.stockTypes;
+        fillTypes();
+        render();
+      } catch (e) {
+        console.warn('選項讀取失敗，用備用值：' + e.message);
+      }
+    }
+
+    // ---- 電腦版：複製進貨編號 ----
+    async function copyText(text) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.append(ta); ta.select();
+        const ok = document.execCommand('copy'); ta.remove(); return ok;
+      }
+    }
+
+    async function showCopyFallback(text) {
+      const head = '✅ 已登記成功（請勿重新送出）\n群組通知沒發出，電腦端請在群組貼上：' + text;
+      const done = () => {
+        showMsg(head + '\n（已自動複製，到群組按 Ctrl + V、Enter 即可）\n5 秒後自動關閉');
+        setTimeout(() => liff.closeWindow(), 5000);
+      };
+      if (await copyText(text)) return done();
+      showMsg(head);
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'submit'; btn.textContent = '📋 複製「' + text + '」';
+      btn.onclick = async () => { if (await copyText(text)) { btn.remove(); done(); } else btn.textContent = '複製失敗，請手動在群組輸入：' + text; };
+      $('msg').after(btn);
+    }
+
+    function idTokenExpiresSoon(minutes) {
+      const t = liff.getDecodedIDToken();
+      return !t || !t.exp || t.exp * 1000 < Date.now() + minutes * 60000;
+    }
+
+    async function main() {
+      $('date').value = new Date().toLocaleDateString('sv-SE');
+      fillTypes();
+      render();
+
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+
+      // 電腦版沿用舊登入憑證可能過期 → 開表單時重新登入一次（只做一次，避免無限跳轉）
+      let relogged = false;
+      try { relogged = sessionStorage.getItem('relogin') === '1'; } catch (e) {}
+      if (idTokenExpiresSoon(30) && !relogged) {
+        try { sessionStorage.setItem('relogin', '1'); } catch (e) {}
+        showMsg('登入憑證更新中…');
+        liff.logout();
+        liff.login({ redirectUri: location.href });
+        return;
+      }
+      try { sessionStorage.removeItem('relogin'); } catch (e) {}
+
+      groupId = new URLSearchParams(location.search).get('gid') || '';
+      if (!groupId) { showMsg('請從群組內機器人貼出的「進貨登記連結」開啟本表單', true); return; }
+
+      try {
+        const perm = await liff.permission.query('chat_message.write');
+        if (perm.state === 'prompt') {
+          showMsg('請先按「許可」，允許傳送訊息到聊天室…');
+          await liff.permission.requestAll();
+          return;
+        }
+      } catch (e) { showMsg(''); }
+
+      const profile = await liff.getProfile();
+      $('who').textContent = '登記人：' + profile.displayName;
+      $('btn').disabled = false;
+      loadInit();
+    }
+
+    $('form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (!$('btn').dataset.ready) {
+        showMsg('請至少填一區，而且「總數」要等於「各等級合計」', true);
+        return;
+      }
+      if (idTokenExpiresSoon(1)) {
+        showMsg('表單開太久，登入已過期。請按右上角 ⋮ →「重新整理」後再填一次（這筆還沒送出）', true);
+        return;
+      }
+      $('btn').disabled = true;
+      const date = $('date').value.replace(/-/g, '/');
+      const type = $('type').value;
+      const blocks = readBlocks().filter((b) => sum(b.houses) || sum(b.grades));
+      showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
+
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 60000);
+      const body = JSON.stringify({
+        type: 'stock_submit', submitId: submitId, idToken: liff.getIDToken(), groupId: groupId,
+        date: date, stockType: type, blocks: blocks, note: $('note').value.trim(),
+      });
+      // 網路中斷就用同一個 submitId 自動重試（不會重複建立）
+      async function postWithRetry() {
+        for (let attempt = 0; ; attempt++) {
+          try {
+            return await fetch(GAS_URL, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body });
+          } catch (e) {
+            if (e.name === 'AbortError' || attempt >= 2) throw e;
+            showMsg('網路不穩，自動重試中…（' + (attempt + 1) + '/2）');
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+        }
+      }
+
+      try {
+        const res = await postWithRetry();
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || '未知錯誤');
+        if (!data.ids || !data.ids.length) throw new Error('伺服器回應異常');
+        const code = '進貨編號 #' + data.ids.join(',');
+
+        try {
+          await liff.sendMessages([{
+            type: 'text',
+            text: '📦 我登記了' + type + '（' + date.slice(5) + '）\n'
+              + blocks.map((b) => '【' + b.group + '】' + fmt(sum(b.houses)) + ' 顆').join('\n')
+              + '\n（' + code + '）',
+          }]);
+        } catch (e) {
+          showCopyFallback(code);
+          return;
+        }
+
+        if (data.buttonError) {
+          showMsg('✅ 已登記到 Ragic（請勿重新送出），但自動「建立庫存」失敗，請到 Ragic 庫存登記手動按「建立庫存」', true);
+          return;
+        }
+        showMsg('✅ 已送出！');
+        setTimeout(() => liff.closeWindow(), 1200);
+      } catch (e) {
+        const msg = e.name === 'AbortError' || e.name === 'TypeError'
+          ? '連線不穩，可能已經登記成功。請直接再按一次「送出」確認（不會重複登記）'
+          : '送出失敗：' + e.message;
+        showMsg(msg, true);
+        $('btn').disabled = false;
+      } finally {
+        clearTimeout(timer);
+      }
+    });
+
+    main().catch((e) => showMsg('初始化失敗：' + e.message, true));
+  </script>
+</body>
+</html>
