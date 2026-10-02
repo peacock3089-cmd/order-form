@@ -375,13 +375,27 @@
       const ctrl = new AbortController();
       // 有附件時上傳較久，等候時間拉長
       const timer = setTimeout(() => ctrl.abort(), photos.length || files.length ? 120000 : 45000);
+      // GAS 偶爾處理完了、回應卻傳不回來（Failed to fetch）。同一個 submitId 重送不會重複建立，
+      // 所以網路錯誤時自動重試，最多 2 次，重試會拿到第一次的結果
+      async function postWithRetry(body) {
+        for (let attempt = 0; ; attempt++) {
+          try {
+            return await fetch(GAS_URL, {
+              method: 'POST',
+              signal: ctrl.signal,
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // 用 text/plain 避免 CORS preflight（GAS 不支援 OPTIONS）
+              body: body,
+            });
+          } catch (e) {
+            if (e.name === 'AbortError' || attempt >= 2) throw e;
+            showMsg('網路不穩，自動重試中…（' + (attempt + 1) + '/2）');
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+        }
+      }
+
       try {
-        // 用 text/plain 避免 CORS preflight（GAS 不支援 OPTIONS）
-        const res = await fetch(GAS_URL, {
-          method: 'POST',
-          signal: ctrl.signal,
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
+        const res = await postWithRetry(JSON.stringify({
             type: 'liff_submit',
             submitId: submitId,
             idToken: liff.getIDToken(),   // 後端用來驗證身分，不信任前端傳來的名字
@@ -397,8 +411,7 @@
             photos: photos,
             files: files,
             item: $('item').value.trim(),
-          }),
-        });
+        }));
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || '未知錯誤');
         // 只有真正寫進 Ragic 才會有 ragicId；只看 ok:true 不算數
@@ -428,8 +441,9 @@
         setTimeout(() => liff.closeWindow(), 1200);
       } catch (e) {
         // 逾時 ≠ 失敗：可能其實已寫入。再按送出也安全（同一個 submitId 不會重複建立）
-        const msg = e.name === 'AbortError'
-          ? '等候逾時，可能已經登記成功，請先看群組有沒有通知；沒有的話再按一次送出（不會重複登記）'
+        // AbortError＝逾時；TypeError＝網路中斷（Failed to fetch）。兩種都可能其實已寫入
+        const msg = e.name === 'AbortError' || e.name === 'TypeError'
+          ? '連線不穩，可能已經登記成功。請直接再按一次「送出」確認（不會重複登記）'
           : '送出失敗：' + e.message;
         showMsg(msg, true);
         $('btn').disabled = false;
