@@ -304,7 +304,7 @@
         try {
           await liff.sendMessages([{
             type: 'text',
-            text: '📦 我登記了' + type + '（' + date.slice(5) + '）\n'
+            text: '🥚 我登記了' + type + '（' + date.slice(5) + '）\n'
               + blocks.map((b) => '【' + b.group + '】' + fmt(sum(b.houses)) + ' 顆').join('\n')
               + '\n（' + code + '）',
           }]);
