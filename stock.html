@@ -58,10 +58,13 @@
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
 
-    // 備用值：表單打開後會從 Ragic 讀最新的（棟別分群、等級、進貨/報廢）
+    // 備用值：表單打開後會從 Ragic 讀最新的（一般蛋／初生蛋、各棟、各分群的等級、進貨/報廢）
+    const HOUSES = ['第一棟', '第二棟', '第三棟', '第四棟', '第五棟'];
     let OPTS = {
-      houseGroups: [{ name: '第一/二', houses: ['第一棟', '第二棟'] }, { name: '第三/四', houses: ['第三棟', '第四棟'] }],
-      grades: ['良蛋', '次級蛋', '初生良蛋', '初生次蛋', '大蛋', 'NG', '破蛋'],
+      eggGroups: [
+        { name: '一般蛋', houses: HOUSES, grades: ['良蛋', '次級蛋', '大蛋', 'NG', '破蛋'] },
+        { name: '初生蛋', houses: HOUSES, grades: ['初生良蛋', '初生次級蛋', '大蛋', 'NG', '破蛋'] },
+      ],
       stockTypes: ['進貨', '報廢'],
     };
 
@@ -96,7 +99,7 @@
     function render() {
       const keep = readBlocks(); // 重畫時保留已填的數字
       $('blocks').innerHTML = '';
-      OPTS.houseGroups.forEach((g) => {
+      OPTS.eggGroups.forEach((g) => {
         const block = document.createElement('div');
         block.className = 'block';
         block.dataset.group = g.name;
@@ -107,7 +110,7 @@
         g.houses.forEach((h) => gridH.append(numInput('house', h)));
         const subG = document.createElement('div'); subG.className = 'sub'; subG.textContent = '各等級數量';
         const gridG = document.createElement('div'); gridG.className = 'grid';
-        OPTS.grades.forEach((x) => gridG.append(numInput('grade', x)));
+        g.grades.forEach((x) => gridG.append(numInput('grade', x))); // 只列這個分群的等級
         const check = document.createElement('div'); check.className = 'check';
         block.append(h2, subH, gridH, subG, gridG, check);
         $('blocks').append(block);
@@ -180,8 +183,7 @@
         const data = await res.json();
         if (!data.ok || !data.options) return;
         const o = data.options;
-        if (o.houseGroups && o.houseGroups.length) OPTS.houseGroups = o.houseGroups;
-        if (o.grades && o.grades.length) OPTS.grades = o.grades;
+        if (o.eggGroups && o.eggGroups.length) OPTS.eggGroups = o.eggGroups;
         if (o.stockTypes && o.stockTypes.length) OPTS.stockTypes = o.stockTypes;
         fillTypes();
         render();
