@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>改單申請</title>
+  <style>
+    :root { --main: #06c755; --text: #222; --muted: #777; --bg: #f5f5f5; --line: #ddd; --warn: #b45309; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; font-family: -apple-system, "Noto Sans TC", sans-serif; background: var(--bg); color: var(--text); }
+    .card { background: #fff; border-radius: 12px; padding: 20px; max-width: 480px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .who { color: var(--muted); font-size: 14px; margin-bottom: 8px; }
+    label, .label { display: block; font-weight: 600; margin: 16px 0 6px; }
+    input, textarea, select { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; background: #fff; color: var(--text); }
+    textarea { min-height: 70px; }
+    .row { display: grid; grid-template-columns: 1fr 90px 40px; grid-template-areas: "grade qty del" "pack pack pack";
+           gap: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 10px; }
+    .row .grade { grid-area: grade; }
+    .row .pack { grid-area: pack; }
+    .row input { grid-area: qty; text-align: center; }
+    .del { grid-area: del; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: #c00; font-size: 18px; }
+    .add { width: 100%; padding: 10px; border: 1px dashed var(--main); border-radius: 8px; background: #fff; color: var(--main); font-size: 16px; }
+    .cancelbox { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 12px; border: 1px solid #f3c6c6; border-radius: 10px; background: #fff7f7; font-weight: 600; color: #b91c1c; }
+    .cancelbox input { width: 22px; height: 22px; margin: 0; }
+    .hint { font-size: 14px; color: var(--muted); margin-top: 6px; }
+    .pending { font-size: 14px; color: var(--warn); margin-top: 6px; }
+    .submit { width: 100%; margin-top: 24px; padding: 14px; font-size: 17px; border: 0; border-radius: 8px; background: var(--main); color: #fff; }
+    .submit:disabled { background: #aaa; }
+    .msg { margin-top: 14px; text-align: center; white-space: pre-line; }
+    .err { color: #d00; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>改單申請</h1>
+    <div class="who" id="who">載入中…</div>
+
+    <label for="order">要改哪張訂單</label>
+    <select id="order" disabled><option value="">載入訂單中…</option></select>
+    <div class="hint">只會列出你自己登記、還沒取消、出貨日在 7 天內或之後的訂單</div>
+    <div class="pending" id="pending"></div>
+
+    <form id="form" class="hidden">
+      <label class="cancelbox"><input type="checkbox" id="cancel"> 取消整張訂單</label>
+
+      <div id="editArea">
+        <div class="hint">直接改成你要的樣子，沒改的不用動</div>
+        <label for="shipDate">出貨日期</label>
+        <input type="date" id="shipDate">
+
+        <label for="shipMethod">出貨方式</label>
+        <select id="shipMethod"></select>
+
+        <label for="customer">客戶</label>
+        <input id="customer">
+
+        <div class="label">出貨明細</div>
+        <div id="rows"></div>
+        <button type="button" class="add" id="addRow">＋ 新增一列</button>
+
+        <label for="payMethod">結帳方式</label>
+        <select id="payMethod"></select>
+
+        <label for="invoice">發票方式</label>
+        <select id="invoice"></select>
+
+        <label for="item">備註</label>
+        <textarea id="item"></textarea>
+
+        <label for="amount">匯款金額</label>
+        <input type="number" id="amount" inputmode="numeric" min="0" step="1">
+      </div>
+
+      <label for="reason">修改原因（必填）</label>
+      <textarea id="reason" required placeholder="例如：客戶追加、延後出貨…"></textarea>
+
+      <button type="submit" class="submit" id="btn">送出申請</button>
+    </form>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    const LIFF_ID = '2011822642-ulMcTzMV';
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
+
+    const $ = (id) => document.getElementById(id);
+    let groupId = '';
+    let ORDERS = [];
+    let OPTS = { grades: [], packs: [], shipMethod: [], payMethod: [], invoice: [] };
+    const submitId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + '-' + Math.random().toString(36).slice(2));
+
+    function showMsg(text, isErr) {
+      $('msg').textContent = text;
+      $('msg').className = 'msg' + (isErr ? ' err' : '');
+    }
+
+    // 下拉：原本的值不在選項裡（例如舊名稱）也先放進去，免得被默默清掉
+    function fillSelect(s, placeholder, options, value) {
+      s.innerHTML = '';
+      s.append(new Option(placeholder, ''));
+      const list = options.slice();
+      if (value && list.indexOf(value) < 0) list.push(value);
+      list.forEach((o) => s.append(new Option(o, o)));
+      s.value = value || '';
+    }
+
+    function addRow(r) {
+      r = r || { rowId: '', grade: '', pack: '', qty: '' };
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.dataset.rowId = r.rowId || '';
+      const grade = document.createElement('select'); grade.className = 'grade'; grade.required = true;
+      fillSelect(grade, '等級', OPTS.grades, r.grade);
+      const pack = document.createElement('select'); pack.className = 'pack'; pack.required = true;
+      fillSelect(pack, r.pack ? '包裝方式' : '包裝方式（原本空白，請選）', OPTS.packs, r.pack);
+      const qty = document.createElement('input');
+      qty.type = 'number'; qty.inputMode = 'numeric'; qty.min = '1'; qty.step = '1'; qty.required = true; qty.placeholder = '數量';
+      qty.value = r.qty || '';
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'del'; del.textContent = '✕';
+      del.onclick = () => { if ($('rows').children.length > 1) row.remove(); };
+      row.append(grade, qty, del, pack);
+      $('rows').append(row);
+    }
+
+    function readRows() {
+      return [...$('rows').children].map((row) => ({
+        rowId: row.dataset.rowId,
+        grade: row.querySelector('.grade').value,
+        pack: row.querySelector('.pack').value,
+        qty: row.querySelector('input').value,
+      }));
+    }
+
+    // 選了訂單 → 把原本內容帶進表單
+    function loadOrder(o) {
+      $('pending').textContent = o.pending ? '⚠️ 這張訂單已經有申請在處理中（' + o.pending + '），請等後勤處理完再申請' : '';
+      $('form').classList.toggle('hidden', !!o.pending);
+      if (o.pending) return;
+      $('cancel').checked = false;
+      $('editArea').classList.remove('hidden');
+      $('shipDate').value = (o.fields.SHIP_DATE || '').replace(/\//g, '-');
+      fillSelect($('shipMethod'), '（未選）', OPTS.shipMethod, o.fields.SHIP_METHOD);
+      $('customer').value = o.fields.CUSTOMER || '';
+      $('rows').innerHTML = '';
+      (o.rows.length ? o.rows : [null]).forEach(addRow);
+      fillSelect($('payMethod'), '（未選）', OPTS.payMethod, o.fields.PAY_METHOD);
+      fillSelect($('invoice'), '（未選）', OPTS.invoice, o.fields.INVOICE);
+      $('item').value = o.fields.ITEM || '';
+      $('amount').value = o.fields.AMOUNT || '';
+      $('reason').value = '';
+      showMsg('');
+    }
+
+    $('order').onchange = () => {
+      const o = ORDERS.find((x) => String(x.id) === $('order').value);
+      if (o) loadOrder(o); else $('form').classList.add('hidden');
+    };
+    $('cancel').onchange = () => $('editArea').classList.toggle('hidden', $('cancel').checked);
+    $('addRow').onclick = () => addRow();
+
+    async function loadOrders() {
+      const res = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ type: 'my_orders', idToken: liff.getIDToken(), groupId: groupId }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      ORDERS = data.orders;
+      OPTS = data.options || OPTS;
+      const sel = $('order');
+      sel.innerHTML = '';
+      if (!ORDERS.length) {
+        sel.append(new Option('沒有可以修改的訂單', ''));
+        return;
+      }
+      sel.append(new Option('請選擇訂單', ''));
+      ORDERS.forEach((o) => {
+        const ship = o.fields.SHIP_DATE ? '出貨 ' + o.fields.SHIP_DATE.slice(5) : '未填出貨日';
+        sel.append(new Option(o.no + '｜' + (o.fields.CUSTOMER || '—') + '｜' + ship + (o.pending ? '｜申請中' : ''), String(o.id)));
+      });
+      sel.disabled = false;
+    }
+
+    // ---- 電腦版：複製改單編號 ----
+    async function copyText(text) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.append(ta); ta.select();
+        const ok = document.execCommand('copy'); ta.remove(); return ok;
+      }
+    }
+
+    async function showCopyFallback(text) {
+      const head = '✅ 已送出申請（請勿重新送出）\n群組通知沒發出，電腦端請在群組貼上：' + text;
+      const done = () => {
+        showMsg(head + '\n（已自動複製，到群組按 Ctrl + V、Enter 即可）\n5 秒後自動關閉');
+        setTimeout(() => liff.closeWindow(), 5000);
+      };
+      if (await copyText(text)) return done();
+      showMsg(head);
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'submit'; btn.textContent = '📋 複製「' + text + '」';
+      btn.onclick = async () => { if (await copyText(text)) { btn.remove(); done(); } else btn.textContent = '複製失敗，請手動在群組輸入：' + text; };
+      $('msg').after(btn);
+    }
+
+    function idTokenExpiresSoon(minutes) {
+      const t = liff.getDecodedIDToken();
+      return !t || !t.exp || t.exp * 1000 < Date.now() + minutes * 60000;
+    }
+
+    async function main() {
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+
+      let relogged = false;
+      try { relogged = sessionStorage.getItem('relogin') === '1'; } catch (e) {}
+      if (idTokenExpiresSoon(30) && !relogged) {
+        try { sessionStorage.setItem('relogin', '1'); } catch (e) {}
+        showMsg('登入憑證更新中…');
+        liff.logout();
+        liff.login({ redirectUri: location.href });
+        return;
+      }
+      try { sessionStorage.removeItem('relogin'); } catch (e) {}
+
+      groupId = new URLSearchParams(location.search).get('gid') || '';
+      if (!groupId) { showMsg('請從群組內機器人貼出的「改單申請連結」開啟本表單', true); return; }
+
+      try {
+        const perm = await liff.permission.query('chat_message.write');
+        if (perm.state === 'prompt') {
+          showMsg('請先按「許可」，允許傳送訊息到聊天室…');
+          await liff.permission.requestAll();
+          return;
+        }
+      } catch (e) { showMsg(''); }
+
+      const profile = await liff.getProfile();
+      $('who').textContent = '申請人：' + profile.displayName;
+      await loadOrders();
+    }
+
+    $('form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (idTokenExpiresSoon(1)) {
+        showMsg('表單開太久，登入已過期。請按右上角 ⋮ →「重新整理」後再填一次（這筆還沒送出）', true);
+        return;
+      }
+      const o = ORDERS.find((x) => String(x.id) === $('order').value);
+      if (!o) return;
+      const cancel = $('cancel').checked;
+      if (cancel && !confirm('確定要申請「取消整張訂單 ' + o.no + '」嗎？')) return;
+      $('btn').disabled = true;
+      showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
+
+      const body = JSON.stringify({
+        type: 'change_submit', submitId: submitId, idToken: liff.getIDToken(), groupId: groupId,
+        orderId: o.id, cancel: cancel, reason: $('reason').value.trim(),
+        fields: cancel ? {} : {
+          SHIP_DATE: $('shipDate').value.replace(/-/g, '/'),
+          SHIP_METHOD: $('shipMethod').value,
+          CUSTOMER: $('customer').value.trim(),
+          PAY_METHOD: $('payMethod').value,
+          INVOICE: $('invoice').value,
+          ITEM: $('item').value.trim(),
+          AMOUNT: $('amount').value,
+        },
+        rows: cancel ? [] : readRows(),
+      });
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 45000);
+      async function postWithRetry() {
+        for (let attempt = 0; ; attempt++) {
+          try {
+            return await fetch(GAS_URL, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body });
+          } catch (e) {
+            if (e.name === 'AbortError' || attempt >= 2) throw e;
+            showMsg('網路不穩，自動重試中…（' + (attempt + 1) + '/2）');
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+        }
+      }
+
+      try {
+        const res = await postWithRetry();
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || '未知錯誤');
+        const code = '改單編號 #' + data.crId;
+        try {
+          await liff.sendMessages([{ type: 'text', text: '✏️ 我申請' + (cancel ? '取消' : '修改') + '訂單 ' + data.orderNo + '\n（' + code + '）' }]);
+        } catch (e) {
+          showCopyFallback(code);
+          return;
+        }
+        showMsg('✅ 已送出申請！等後勤核准後會自動套用');
+        setTimeout(() => liff.closeWindow(), 1500);
+      } catch (e) {
+        const msg = e.name === 'AbortError' || e.name === 'TypeError'
+          ? '連線不穩，可能已經送出。請直接再按一次「送出申請」確認（不會重複申請）'
+          : '送出失敗：' + e.message;
+        showMsg(msg, true);
+        $('btn').disabled = false;
+      } finally {
+        clearTimeout(timer);
+      }
+    });
+
+    main().catch((e) => showMsg('初始化失敗：' + e.message, true));
+  </script>
+</body>
+</html>
