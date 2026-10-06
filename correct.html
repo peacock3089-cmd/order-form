@@ -240,7 +240,7 @@
           const dir = data.diff > 0 ? '實際比應有多' : '實際比應有少';
           $('warnText').textContent = '⚠️ 對帳誤差 ' + sign(data.diff) + ' 顆（' + dir + '），超過 50 顆\n'
             + '應有：前次（' + String(data.prevDate).slice(5) + '）' + fmt(data.prevTotal)
-            + ' ＋ 產量 ' + fmt(data.prod) + ' － 出貨 ' + fmt(data.ship) + ' ＝ ' + fmt(data.expected) + '\n'
+            + ' ＋ 之後進貨 ' + fmt(data.prod) + ' － 之後出貨 ' + fmt(data.ship) + ' ＝ ' + fmt(data.expected) + '\n'
             + '實際：' + fmt(data.total) + '\n\n'
             + '請再點一次確認數字。\n確定沒錯（例如緊急剎車破損），請勾下面並在備註寫原因後再送出。';
           $('warn').classList.add('show');
