@@ -18,6 +18,7 @@
     .cell { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
     .cell span { flex: none; width: 80px; font-size: 17px; font-weight: 600; }
     .cell input { text-align: right; font-size: 18px; }
+    .today { padding: 10px 12px; border-radius: 8px; background: #f3f3f3; font-size: 17px; font-weight: 600; }
     .total { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: #f3f3f3; font-size: 16px; text-align: right; }
     .warn { display: none; margin-top: 16px; padding: 12px; border: 1px solid #f3c6c6; border-radius: 10px; background: #fff7f7; color: var(--bad); white-space: pre-line; }
     .warn.show { display: block; }
@@ -36,8 +37,8 @@
     <div class="hint">填「今天包裝完、出完貨之後」倉庫實際的蛋量（一般和初生合在一起算）。沒有的品項填 0；初生蛋只有單獨保留時才填。</div>
 
     <form id="form">
-      <label for="date">校正日期</label>
-      <input type="date" id="date" required>
+      <div class="label">校正日期</div>
+      <div class="today" id="date">—</div>
 
       <div class="label">實際數量（顆）</div>
       <div id="cells"></div>
@@ -161,7 +162,8 @@
     }
 
     async function main() {
-      $('date').value = new Date().toLocaleDateString('sv-SE');
+      // 校正日期固定是今天（只顯示，不能改；伺服器也一律用今天）
+      $('date').textContent = '今天 ' + new Date().toLocaleDateString('sv-SE').replace(/-/g, '/');
       render();
 
       await liff.init({ liffId: LIFF_ID });
@@ -210,10 +212,10 @@
 
       $('btn').disabled = true;
       showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
-      const date = $('date').value.replace(/-/g, '/');
+      const date = new Date().toLocaleDateString('sv-SE').replace(/-/g, '/');
       const body = JSON.stringify({
         type: 'corr_submit', submitId: submitId, idToken: liff.getIDToken(), groupId: groupId,
-        date: date, qty: qty, note: $('note').value.trim(), special: special,
+        qty: qty, note: $('note').value.trim(), special: special,
       });
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 60000);
@@ -235,9 +237,11 @@
         if (data.needConfirm) {
           // 誤差超過 50 顆：先擋下來，請再點一次；確定沒錯才勾特殊情況＋寫原因
           const sign = (n) => (n > 0 ? '+' : '') + fmt(n);
-          $('warnText').textContent = '⚠️ 對帳誤差 ' + sign(data.diff) + ' 顆，超過 50 顆\n'
-            + '前次校正（' + String(data.prevDate).slice(5) + '）' + fmt(data.prevTotal)
-            + ' ＋ 產量 ' + fmt(data.prod) + ' － 出貨 ' + fmt(data.ship) + ' － 本次 ' + fmt(data.total) + '\n\n'
+          const dir = data.diff > 0 ? '實際比應有多' : '實際比應有少';
+          $('warnText').textContent = '⚠️ 對帳誤差 ' + sign(data.diff) + ' 顆（' + dir + '），超過 50 顆\n'
+            + '應有：前次（' + String(data.prevDate).slice(5) + '）' + fmt(data.prevTotal)
+            + ' ＋ 產量 ' + fmt(data.prod) + ' － 出貨 ' + fmt(data.ship) + ' ＝ ' + fmt(data.expected) + '\n'
+            + '實際：' + fmt(data.total) + '\n\n'
             + '請再點一次確認數字。\n確定沒錯（例如緊急剎車破損），請勾下面並在備註寫原因後再送出。';
           $('warn').classList.add('show');
           $('warn').scrollIntoView({ behavior: 'smooth', block: 'center' });
