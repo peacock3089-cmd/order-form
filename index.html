@@ -146,6 +146,11 @@
 
     // 套用 Ragic 讀回來的最新選項（空清單就沿用備用值）
     function applyOptions(o) {
+      // 停止出貨日：預設日期剛好碰到就往後挪（使用者自己選過的不動，但送出時還是會擋）
+      if (o.blockedDates) {
+        BLOCKED = o.blockedDates.map((d) => d.replace(/\//g, '-'));
+        if (!shipDirty && noShip($('shipDate').value)) $('shipDate').value = firstShipDay();
+      }
       if (o.orderGrades && o.orderGrades.length) GRADES = o.orderGrades;
       if (o.packs && o.packs.length) PACKS = o.packs;
       document.querySelectorAll('#rows .grade').forEach((s) => fillSelect(s, '等級', GRADES));
@@ -330,16 +335,29 @@
 
     $('addRow').onclick = addRow;
     addRow();
-    // ---- 週日不出貨 ----
-    const isSunday = (ymd) => { const p = ymd.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]).getDay() === 0; };
-    // 預設今天；今天是週日就預設隔天（週一）
-    const d0 = new Date();
-    if (d0.getDay() === 0) d0.setDate(d0.getDate() + 1);
-    $('shipDate').value = d0.toLocaleDateString('sv-SE');
+    // ---- 不出貨的日子：週日＋Ragic「停止出貨日期清單」 ----
+    let BLOCKED = []; // yyyy-mm-dd；表單打開後從 GAS 讀
+    let shipDirty = false; // 使用者自己改過出貨日期就不再自動調整
+    function noShip(v) { // v: yyyy-mm-dd；可以出貨回傳空字串
+      if (!v) return '';
+      const p = v.split('-').map(Number);
+      if (new Date(p[0], p[1] - 1, p[2]).getDay() === 0) return '週日不出貨，請選其他出貨日期';
+      if (BLOCKED.indexOf(v) >= 0) return v.slice(5).replace('-', '/') + ' 停止出貨，請選其他出貨日期';
+      return '';
+    }
+    // 從今天起，找第一個可以出貨的日子
+    function firstShipDay() {
+      const d = new Date();
+      for (let i = 0; i < 60 && noShip(d.toLocaleDateString('sv-SE')); i++) d.setDate(d.getDate() + 1);
+      return d.toLocaleDateString('sv-SE');
+    }
+    $('shipDate').value = firstShipDay();
     $('shipDate').addEventListener('change', () => {
-      if ($('shipDate').value && isSunday($('shipDate').value)) {
+      shipDirty = true;
+      const why = noShip($('shipDate').value);
+      if (why) {
         $('shipDate').value = '';
-        showMsg('週日不出貨，請選其他出貨日期', true);
+        showMsg(why, true);
       } else {
         showMsg('');
       }
@@ -404,8 +422,8 @@
         return;
       }
       const customer = $('customer').value.trim();
-      if (isSunday($('shipDate').value)) {
-        showMsg('週日不出貨，請選其他出貨日期', true);
+      if (noShip($('shipDate').value)) {
+        showMsg(noShip($('shipDate').value), true);
         $('btn').disabled = false;
         return;
       }

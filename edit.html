@@ -161,14 +161,21 @@
     };
     $('cancel').onchange = () => $('editArea').classList.toggle('hidden', $('cancel').checked);
 
-    // 週日不出貨：改成週日就清掉並提醒（原本就是週日的舊訂單，沒改日期不擋）
-    const isSunday = (ymd) => { const p = ymd.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]).getDay() === 0; };
+    // 不出貨的日子（週日＋停止出貨日期清單）：改成這些日子就跳回原日期並提醒（原本就是的舊訂單，沒改日期不擋）
+    function noShip(v) {
+      if (!v) return '';
+      const p = v.split('-').map(Number);
+      if (new Date(p[0], p[1] - 1, p[2]).getDay() === 0) return '週日不出貨，請選其他出貨日期';
+      if ((OPTS.blockedDates || []).map((d) => d.replace(/\//g, '-')).indexOf(v) >= 0) return v.slice(5).replace('-', '/') + ' 停止出貨，請選其他出貨日期';
+      return '';
+    }
     $('shipDate').addEventListener('change', () => {
       const o = ORDERS.find((x) => String(x.id) === $('order').value);
       const orig = o ? (o.fields.SHIP_DATE || '').replace(/\//g, '-') : '';
-      if ($('shipDate').value && $('shipDate').value !== orig && isSunday($('shipDate').value)) {
+      const why = $('shipDate').value !== orig ? noShip($('shipDate').value) : '';
+      if (why) {
         $('shipDate').value = orig;
-        showMsg('週日不出貨，請選其他出貨日期', true);
+        showMsg(why, true);
       } else {
         showMsg('');
       }
