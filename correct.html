@@ -64,6 +64,7 @@
 
     // 備用值：打開後會從 Ragic「目前庫存(校正)」讀最新的品項
     let CATS = ['良蛋', '次級蛋', '大蛋', 'NG', '破蛋', '初生蛋'];
+    let WARN = {}; // 週六＋國定假日＋補假 { 'yyyy/MM/dd': '國慶日' }，表單打開後從 GAS 讀
     let OPTIONAL = ['初生蛋']; // 選填：現場通常把初生併進一般一起算，沒有單獨留就不用填
     const $ = (id) => document.getElementById(id);
     let groupId = '';
@@ -122,6 +123,7 @@
           body: JSON.stringify({ type: 'init', idToken: liff.getIDToken(), groupId: groupId }),
         });
         const data = await res.json();
+        if (data.ok && data.options && data.options.warnDates) WARN = data.options.warnDates;
         if (data.ok && data.options && data.options.stockCats && data.options.stockCats.length) {
           CATS = data.options.stockCats;
           if (data.options.stockOptional) OPTIONAL = data.options.stockOptional;
@@ -209,9 +211,11 @@
       if (missing.length) { showMsg('請填：' + missing.join('、') + '（沒有就填 0）', true); return; }
       const special = $('special').checked;
       if (special && !$('note').value.trim()) { showMsg('勾了「特殊情況」，請在備註寫原因', true); return; }
-      // 週六、週日校正：提醒提前包裝好的蛋也要算進去（以台灣時間判斷）
-      const wd = new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Taipei', weekday: 'short' });
-      if ((wd === 'Sat' || wd === 'Sun') && !confirm('提前包裝的要計入庫存喔！！\n\n確定要送出嗎？')) {
+      // 週六、週日、連假校正：提醒提前包裝好的蛋也要算進去（以台灣時間判斷）
+      const tw = new Date(Date.now() + 8 * 3600000); // 台灣時間（UTC+8，沒有夏令時間）
+      const wd = tw.getUTCDay();
+      const todayTw = tw.toISOString().slice(0, 10).replace(/-/g, '/');
+      if ((wd === 6 || wd === 0 || WARN[todayTw] !== undefined) && !confirm('提前包裝的要計入庫存喔！！\n\n確定要送出嗎？')) {
         showMsg('已取消送出，可以修改數量再送');
         return;
       }
