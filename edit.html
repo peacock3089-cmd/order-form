@@ -164,6 +164,7 @@
     // 不出貨的日子（週日＋停止出貨日期清單）：改成這些日子就跳回原日期並提醒（原本就是的舊訂單，沒改日期不擋）
     function noShip(v) {
       if (!v) return '';
+      if (v < new Date().toLocaleDateString('sv-SE')) return '出貨日期不能改成過去的日期';
       const p = v.split('-').map(Number);
       if (new Date(p[0], p[1] - 1, p[2]).getDay() === 0) return '週日不出貨，請選其他出貨日期';
       const slash = v.replace(/-/g, '/');
