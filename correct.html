@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>庫存校正</title>
+  <style>
+    :root { --main: #06c755; --text: #222; --muted: #777; --bg: #f5f5f5; --line: #ddd; --bad: #b91c1c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; font-family: -apple-system, "Noto Sans TC", sans-serif; background: var(--bg); color: var(--text); }
+    .card { background: #fff; border-radius: 12px; padding: 20px; max-width: 480px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .who { color: var(--muted); font-size: 14px; margin-bottom: 8px; }
+    .hint { font-size: 14px; color: var(--muted); margin-top: 6px; }
+    label, .label { display: block; font-weight: 600; margin: 16px 0 6px; }
+    input, textarea { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; background: #fff; color: var(--text); }
+    textarea { min-height: 70px; }
+    .cell { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .cell span { flex: none; width: 80px; font-size: 17px; font-weight: 600; }
+    .cell input { text-align: right; font-size: 18px; }
+    .total { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: #f3f3f3; font-size: 16px; text-align: right; }
+    .warn { display: none; margin-top: 16px; padding: 12px; border: 1px solid #f3c6c6; border-radius: 10px; background: #fff7f7; color: var(--bad); white-space: pre-line; }
+    .warn.show { display: block; }
+    .special { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-weight: 600; }
+    .special input { width: 22px; height: 22px; margin: 0; }
+    .submit { width: 100%; margin-top: 24px; padding: 14px; font-size: 17px; border: 0; border-radius: 8px; background: var(--main); color: #fff; }
+    .submit:disabled { background: #aaa; }
+    .msg { margin-top: 14px; text-align: center; white-space: pre-line; }
+    .err { color: #d00; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>庫存校正</h1>
+    <div class="who" id="who">載入中…</div>
+    <div class="hint">填「今天包裝完、出完貨之後」倉庫實際的蛋量（新舊蛋合在一起算）。沒有的品項填 0。</div>
+
+    <form id="form">
+      <label for="date">校正日期</label>
+      <input type="date" id="date" required>
+
+      <div class="label">實際數量（顆）</div>
+      <div id="cells"></div>
+      <div class="total" id="total">總數：0</div>
+
+      <div class="warn" id="warn">
+        <div id="warnText"></div>
+        <label class="special"><input type="checkbox" id="special"> 確認數字沒錯（特殊情況）</label>
+      </div>
+
+      <label for="note">備註</label>
+      <textarea id="note" placeholder="選填；特殊情況請寫原因，例如：緊急剎車破損 80 顆"></textarea>
+
+      <button type="submit" class="submit" id="btn" disabled>送出校正</button>
+    </form>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    const LIFF_ID = '2011822642-ulMcTzMV';
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
+
+    // 備用值：打開後會從 Ragic「目前庫存(校正)」讀最新的品項
+    let CATS = ['良蛋', '次級蛋', '大蛋', 'NG', '破蛋'];
+    const $ = (id) => document.getElementById(id);
+    let groupId = '';
+    const submitId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + '-' + Math.random().toString(36).slice(2));
+    const fmt = (n) => Number(n).toLocaleString('en-US');
+
+    function showMsg(text, isErr) {
+      $('msg').textContent = text;
+      $('msg').className = 'msg' + (isErr ? ' err' : '');
+    }
+
+    // 數字欄位（不顯示系統庫存，避免照抄）
+    function render() {
+      const keep = readQty();
+      $('cells').innerHTML = '';
+      CATS.forEach((cat) => {
+        const div = document.createElement('div');
+        div.className = 'cell';
+        const span = document.createElement('span');
+        span.textContent = cat;
+        const inp = document.createElement('input');
+        inp.type = 'number'; inp.inputMode = 'numeric'; inp.min = '0'; inp.step = '1'; inp.required = true;
+        inp.dataset.cat = cat;
+        inp.placeholder = '0';
+        if (keep[cat] !== undefined) inp.value = keep[cat];
+        inp.oninput = () => { updateTotal(); hideWarn(); };
+        div.append(span, inp);
+        $('cells').append(div);
+      });
+      updateTotal();
+    }
+
+    function readQty() {
+      const q = {};
+      document.querySelectorAll('#cells input').forEach((i) => { if (i.value !== '') q[i.dataset.cat] = i.value; });
+      return q;
+    }
+
+    function updateTotal() {
+      const sum = Object.values(readQty()).reduce((s, v) => s + (Number(v) || 0), 0);
+      $('total').textContent = '總數：' + fmt(sum);
+    }
+
+    // 數字改了就要重新確認
+    function hideWarn() {
+      $('warn').classList.remove('show');
+      $('special').checked = false;
+    }
+
+    async function loadInit() {
+      try {
+        const res = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ type: 'init', idToken: liff.getIDToken(), groupId: groupId }),
+        });
+        const data = await res.json();
+        if (data.ok && data.options && data.options.stockCats && data.options.stockCats.length) {
+          CATS = data.options.stockCats;
+          render();
+        }
+      } catch (e) {
+        console.warn('品項讀取失敗，用備用值：' + e.message);
+      }
+    }
+
+    // ---- 電腦版：複製校正編號 ----
+    async function copyText(text) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.append(ta); ta.select();
+        const ok = document.execCommand('copy'); ta.remove(); return ok;
+      }
+    }
+
+    async function showCopyFallback(text) {
+      const head = '✅ 已校正（請勿重新送出）\n群組通知沒發出，電腦端請在群組貼上：' + text;
+      const done = () => {
+        showMsg(head + '\n（已自動複製，到群組按 Ctrl + V、Enter 即可）\n5 秒後自動關閉');
+        setTimeout(() => liff.closeWindow(), 5000);
+      };
+      if (await copyText(text)) return done();
+      showMsg(head);
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'submit'; btn.textContent = '📋 複製「' + text + '」';
+      btn.onclick = async () => { if (await copyText(text)) { btn.remove(); done(); } else btn.textContent = '複製失敗，請手動在群組輸入：' + text; };
+      $('msg').after(btn);
+    }
+
+    function idTokenExpiresSoon(minutes) {
+      const t = liff.getDecodedIDToken();
+      return !t || !t.exp || t.exp * 1000 < Date.now() + minutes * 60000;
+    }
+
+    async function main() {
+      $('date').value = new Date().toLocaleDateString('sv-SE');
+      render();
+
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+
+      let relogged = false;
+      try { relogged = sessionStorage.getItem('relogin') === '1'; } catch (e) {}
+      if (idTokenExpiresSoon(30) && !relogged) {
+        try { sessionStorage.setItem('relogin', '1'); } catch (e) {}
+        showMsg('登入憑證更新中…');
+        liff.logout();
+        liff.login({ redirectUri: location.href });
+        return;
+      }
+      try { sessionStorage.removeItem('relogin'); } catch (e) {}
+
+      groupId = new URLSearchParams(location.search).get('gid') || '';
+      if (!groupId) { showMsg('請從群組內機器人貼出的「庫存校正連結」開啟本表單', true); return; }
+
+      try {
+        const perm = await liff.permission.query('chat_message.write');
+        if (perm.state === 'prompt') {
+          showMsg('請先按「許可」，允許傳送訊息到聊天室…');
+          await liff.permission.requestAll();
+          return;
+        }
+      } catch (e) { showMsg(''); }
+
+      const profile = await liff.getProfile();
+      $('who').textContent = '校正人：' + profile.displayName;
+      $('btn').disabled = false;
+      loadInit();
+    }
+
+    $('form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (idTokenExpiresSoon(1)) {
+        showMsg('表單開太久，登入已過期。請按右上角 ⋮ →「重新整理」後再填一次（這筆還沒送出）', true);
+        return;
+      }
+      const qty = readQty();
+      const missing = CATS.filter((c) => qty[c] === undefined);
+      if (missing.length) { showMsg('請填：' + missing.join('、') + '（沒有就填 0）', true); return; }
+      const special = $('special').checked;
+      if (special && !$('note').value.trim()) { showMsg('勾了「特殊情況」，請在備註寫原因', true); return; }
+
+      $('btn').disabled = true;
+      showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
+      const date = $('date').value.replace(/-/g, '/');
+      const body = JSON.stringify({
+        type: 'corr_submit', submitId: submitId, idToken: liff.getIDToken(), groupId: groupId,
+        date: date, qty: qty, note: $('note').value.trim(), special: special,
+      });
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 60000);
+      async function postWithRetry() {
+        for (let attempt = 0; ; attempt++) {
+          try {
+            return await fetch(GAS_URL, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body });
+          } catch (e) {
+            if (e.name === 'AbortError' || attempt >= 2) throw e;
+            showMsg('網路不穩，自動重試中…（' + (attempt + 1) + '/2）');
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+        }
+      }
+
+      try {
+        const res = await postWithRetry();
+        const data = await res.json();
+        if (data.needConfirm) {
+          // 誤差超過 50 顆：先擋下來，請再點一次；確定沒錯才勾特殊情況＋寫原因
+          const sign = (n) => (n > 0 ? '+' : '') + fmt(n);
+          $('warnText').textContent = '⚠️ 對帳誤差 ' + sign(data.diff) + ' 顆，超過 50 顆\n'
+            + '前次校正（' + String(data.prevDate).slice(5) + '）' + fmt(data.prevTotal)
+            + ' ＋ 產量 ' + fmt(data.prod) + ' － 出貨 ' + fmt(data.ship) + ' － 本次 ' + fmt(data.total) + '\n\n'
+            + '請再點一次確認數字。\n確定沒錯（例如緊急剎車破損），請勾下面並在備註寫原因後再送出。';
+          $('warn').classList.add('show');
+          $('warn').scrollIntoView({ behavior: 'smooth', block: 'center' });
+          showMsg('');
+          $('btn').disabled = false;
+          return;
+        }
+        if (!data.ok) throw new Error(data.error || '未知錯誤');
+        const code = '校正編號 #' + data.corrId;
+        try {
+          await liff.sendMessages([{ type: 'text', text: '🔧 我校正了庫存（' + date.slice(5) + '）\n（' + code + '）' }]);
+        } catch (e) {
+          showCopyFallback(code);
+          return;
+        }
+        showMsg('✅ 已校正！');
+        setTimeout(() => liff.closeWindow(), 1200);
+      } catch (e) {
+        const msg = e.name === 'AbortError' || e.name === 'TypeError'
+          ? '連線不穩，可能已經送出。請直接再按一次「送出校正」確認（不會重複）'
+          : '送出失敗：' + e.message;
+        showMsg(msg, true);
+        $('btn').disabled = false;
+      } finally {
+        clearTimeout(timer);
+      }
+    });
+
+    main().catch((e) => showMsg('初始化失敗：' + e.message, true));
+  </script>
+</body>
+</html>
