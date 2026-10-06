@@ -33,7 +33,7 @@
   <div class="card">
     <h1>庫存校正</h1>
     <div class="who" id="who">載入中…</div>
-    <div class="hint">填「今天包裝完、出完貨之後」倉庫實際的蛋量（新舊蛋合在一起算）。沒有的品項填 0。</div>
+    <div class="hint">填「今天包裝完、出完貨之後」倉庫實際的蛋量（一般和初生合在一起算）。沒有的品項填 0；初生蛋只有單獨保留時才填。</div>
 
     <form id="form">
       <label for="date">校正日期</label>
@@ -62,7 +62,8 @@
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
 
     // 備用值：打開後會從 Ragic「目前庫存(校正)」讀最新的品項
-    let CATS = ['良蛋', '次級蛋', '大蛋', 'NG', '破蛋'];
+    let CATS = ['良蛋', '次級蛋', '大蛋', 'NG', '破蛋', '初生蛋'];
+    let OPTIONAL = ['初生蛋']; // 選填：現場通常把初生併進一般一起算，沒有單獨留就不用填
     const $ = (id) => document.getElementById(id);
     let groupId = '';
     const submitId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + '-' + Math.random().toString(36).slice(2));
@@ -83,9 +84,10 @@
         const span = document.createElement('span');
         span.textContent = cat;
         const inp = document.createElement('input');
-        inp.type = 'number'; inp.inputMode = 'numeric'; inp.min = '0'; inp.step = '1'; inp.required = true;
+        const optional = OPTIONAL.indexOf(cat) >= 0;
+        inp.type = 'number'; inp.inputMode = 'numeric'; inp.min = '0'; inp.step = '1'; inp.required = !optional;
         inp.dataset.cat = cat;
-        inp.placeholder = '0';
+        inp.placeholder = optional ? '有單獨留才填' : '0';
         if (keep[cat] !== undefined) inp.value = keep[cat];
         inp.oninput = () => { updateTotal(); hideWarn(); };
         div.append(span, inp);
@@ -121,6 +123,7 @@
         const data = await res.json();
         if (data.ok && data.options && data.options.stockCats && data.options.stockCats.length) {
           CATS = data.options.stockCats;
+          if (data.options.stockOptional) OPTIONAL = data.options.stockOptional;
           render();
         }
       } catch (e) {
@@ -200,7 +203,7 @@
         return;
       }
       const qty = readQty();
-      const missing = CATS.filter((c) => qty[c] === undefined);
+      const missing = CATS.filter((c) => qty[c] === undefined && OPTIONAL.indexOf(c) < 0);
       if (missing.length) { showMsg('請填：' + missing.join('、') + '（沒有就填 0）', true); return; }
       const special = $('special').checked;
       if (special && !$('note').value.trim()) { showMsg('勾了「特殊情況」，請在備註寫原因', true); return; }
