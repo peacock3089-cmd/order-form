@@ -173,6 +173,16 @@
       }
       return '';
     }
+    // 週六、國定假日、補假：可以出貨，但送出前要再確認。回傳「10/10（六）國慶日」，平日回傳空字串
+    function holidayWarn(v) {
+      if (!v) return '';
+      const p = v.split('-').map(Number);
+      const wd = new Date(p[0], p[1] - 1, p[2]).getDay();
+      const label = v.slice(5).replace('-', '/') + '（' + '日一二三四五六'[wd] + '）';
+      const why = (OPTS.warnDates || {})[v.replace(/-/g, '/')];
+      if (why) return label + ' ' + why;
+      return wd === 6 ? label + ' 週六' : '';
+    }
     $('shipDate').addEventListener('change', () => {
       const o = ORDERS.find((x) => String(x.id) === $('order').value);
       const orig = o ? (o.fields.SHIP_DATE || '').replace(/\//g, '-') : '';
@@ -281,6 +291,9 @@
       if (!o) return;
       const cancel = $('cancel').checked;
       if (cancel && !confirm('確定要申請「取消整張訂單 ' + o.no + '」嗎？')) return;
+      // 改到週六／國定假日／補假：再確認一次（沒改日期不問）
+      const warn = !cancel && $('shipDate').value !== (o.fields.SHIP_DATE || '').replace(/\//g, '-') ? holidayWarn($('shipDate').value) : '';
+      if (warn && !confirm('出貨日 ' + warn + '\n\n你要跟林大場長確認喔!! 出包算你的...\n\n確定要送出嗎？')) return;
       $('btn').disabled = true;
       showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
 

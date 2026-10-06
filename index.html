@@ -153,6 +153,10 @@
         Object.keys(o.blockedReasons || {}).forEach((d) => { REASONS[d.replace(/\//g, '-')] = o.blockedReasons[d]; });
         if (!shipDirty && noShip($('shipDate').value)) $('shipDate').value = firstShipDay();
       }
+      if (o.warnDates) {
+        WARN = {};
+        Object.keys(o.warnDates).forEach((d) => { WARN[d.replace(/\//g, '-')] = o.warnDates[d]; });
+      }
       if (o.orderGrades && o.orderGrades.length) GRADES = o.orderGrades;
       if (o.packs && o.packs.length) PACKS = o.packs;
       document.querySelectorAll('#rows .grade').forEach((s) => fillSelect(s, '等級', GRADES));
@@ -348,6 +352,16 @@
       if (BLOCKED.indexOf(v) >= 0) return v.slice(5).replace('-', '/') + (REASONS[v] ? ' ' + REASONS[v] : '') + ' 停止出貨，請選其他出貨日期';
       return '';
     }
+    // 週六、國定假日、補假：可以出貨，但送出前要再確認。回傳「10/10（六）國慶日」，平日回傳空字串
+    let WARN = {}; // { 'yyyy-mm-dd': '國慶日' }；表單打開後從 GAS 讀
+    function holidayWarn(v) {
+      if (!v) return '';
+      const p = v.split('-').map(Number);
+      const wd = new Date(p[0], p[1] - 1, p[2]).getDay();
+      const label = v.slice(5).replace('-', '/') + '（' + '日一二三四五六'[wd] + '）';
+      if (WARN[v]) return label + ' ' + WARN[v];
+      return wd === 6 ? label + ' 週六' : '';
+    }
     // 從今天起，找第一個可以出貨的日子
     function firstShipDay() {
       const d = new Date();
@@ -427,6 +441,12 @@
       const customer = $('customer').value.trim();
       if (noShip($('shipDate').value)) {
         showMsg(noShip($('shipDate').value), true);
+        $('btn').disabled = false;
+        return;
+      }
+      const warn = holidayWarn($('shipDate').value);
+      if (warn && !confirm('出貨日 ' + warn + '\n\n你要跟林大場長確認喔!! 出包算你的...\n\n確定要送出嗎？')) {
+        showMsg('已取消送出，可以改出貨日期再送');
         $('btn').disabled = false;
         return;
       }
