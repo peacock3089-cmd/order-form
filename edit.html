@@ -113,7 +113,7 @@
       row.className = 'row';
       row.dataset.rowId = r.rowId || '';
       const grade = document.createElement('select'); grade.className = 'grade'; grade.required = true;
-      fillSelect(grade, '等級', OPTS.grades, r.grade);
+      fillSelect(grade, '等級', OPTS.orderGrades || OPTS.grades, r.grade); // 等級＝庫存品項
       const pack = document.createElement('select'); pack.className = 'pack'; pack.required = true;
       fillSelect(pack, r.pack ? '包裝方式' : '包裝方式（原本空白，請選）', OPTS.packs, r.pack);
       const qty = document.createElement('input');

@@ -114,7 +114,7 @@
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
 
     // 下拉選項：表單打開後會從 Ragic 讀最新的（formInit），這裡只是讀取失敗時的備用值
-    let GRADES = ['良蛋', '次級蛋', '初生良蛋', '初生次蛋', '大蛋', 'NG', '破蛋'];
+    let GRADES = ['良蛋', '次級蛋', '大蛋', 'NG', '破蛋', '初生蛋']; // 等級＝「目前庫存(校正)」的庫存品項
     let PACKS = ['6入', '10入', '30入'];
 
     const $ = (id) => document.getElementById(id);
@@ -146,7 +146,7 @@
 
     // 套用 Ragic 讀回來的最新選項（空清單就沿用備用值）
     function applyOptions(o) {
-      if (o.grades && o.grades.length) GRADES = o.grades;
+      if (o.orderGrades && o.orderGrades.length) GRADES = o.orderGrades;
       if (o.packs && o.packs.length) PACKS = o.packs;
       document.querySelectorAll('#rows .grade').forEach((s) => fillSelect(s, '等級', GRADES));
       document.querySelectorAll('#rows .pack').forEach((s) => fillSelect(s, '包裝方式', PACKS));
