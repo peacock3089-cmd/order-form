@@ -166,7 +166,11 @@
       if (!v) return '';
       const p = v.split('-').map(Number);
       if (new Date(p[0], p[1] - 1, p[2]).getDay() === 0) return '週日不出貨，請選其他出貨日期';
-      if ((OPTS.blockedDates || []).map((d) => d.replace(/\//g, '-')).indexOf(v) >= 0) return v.slice(5).replace('-', '/') + ' 停止出貨，請選其他出貨日期';
+      const slash = v.replace(/-/g, '/');
+      if ((OPTS.blockedDates || []).indexOf(slash) >= 0) {
+        const why = (OPTS.blockedReasons || {})[slash];
+        return v.slice(5).replace('-', '/') + (why ? ' ' + why : '') + ' 停止出貨，請選其他出貨日期';
+      }
       return '';
     }
     $('shipDate').addEventListener('change', () => {

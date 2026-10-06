@@ -149,6 +149,8 @@
       // 停止出貨日：預設日期剛好碰到就往後挪（使用者自己選過的不動，但送出時還是會擋）
       if (o.blockedDates) {
         BLOCKED = o.blockedDates.map((d) => d.replace(/\//g, '-'));
+        REASONS = {};
+        Object.keys(o.blockedReasons || {}).forEach((d) => { REASONS[d.replace(/\//g, '-')] = o.blockedReasons[d]; });
         if (!shipDirty && noShip($('shipDate').value)) $('shipDate').value = firstShipDay();
       }
       if (o.orderGrades && o.orderGrades.length) GRADES = o.orderGrades;
@@ -337,12 +339,13 @@
     addRow();
     // ---- 不出貨的日子：週日＋Ragic「停止出貨日期清單」 ----
     let BLOCKED = []; // yyyy-mm-dd；表單打開後從 GAS 讀
+    let REASONS = {}; // { 'yyyy-mm-dd': '國慶日' }
     let shipDirty = false; // 使用者自己改過出貨日期就不再自動調整
     function noShip(v) { // v: yyyy-mm-dd；可以出貨回傳空字串
       if (!v) return '';
       const p = v.split('-').map(Number);
       if (new Date(p[0], p[1] - 1, p[2]).getDay() === 0) return '週日不出貨，請選其他出貨日期';
-      if (BLOCKED.indexOf(v) >= 0) return v.slice(5).replace('-', '/') + ' 停止出貨，請選其他出貨日期';
+      if (BLOCKED.indexOf(v) >= 0) return v.slice(5).replace('-', '/') + (REASONS[v] ? ' ' + REASONS[v] : '') + ' 停止出貨，請選其他出貨日期';
       return '';
     }
     // 從今天起，找第一個可以出貨的日子
