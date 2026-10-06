@@ -88,8 +88,20 @@
       s.value = value || '';
     }
 
-    const rowLine = (r) => '・' + r.grade + '　' + r.pack + ' × ' + r.qty;
-    const rowsKey = (rows) => rows.map((r) => r.grade + '|' + r.pack + '|' + Number(r.qty)).sort().join(',');
+    const rowLine = (r) => '・' + (r.grade || '（缺等級）') + '　' + (r.pack || '（缺包裝）') + ' × ' + r.qty;
+    // 舊訂單等級可能是空白：訂單明細缺東西就不能直接照單出，要按「有替換」補
+    const incomplete = (rows) => !rows.length || rows.some((r) => !r.grade || !r.pack || !(Number(r.qty) > 0));
+    // 跟訂單一樣嗎？訂單缺等級的列只比包裝＋數量（補上等級不算替換）
+    function sameAsOrder(rows, ordered) {
+      if (rows.length !== ordered.length) return false;
+      const left = rows.slice();
+      return ordered.slice().sort((a, b) => (a.grade ? 0 : 1) - (b.grade ? 0 : 1)).every((o) => {
+        const i = left.findIndex((r) => r.pack === o.pack && Number(r.qty) === Number(o.qty) && (!o.grade || r.grade === o.grade));
+        if (i < 0) return false;
+        left.splice(i, 1);
+        return true;
+      });
+    }
 
     function addRow(box, r) {
       r = r || { grade: '', pack: '', qty: '' };
@@ -132,7 +144,12 @@
         head.className = 'head';
         const cb = document.createElement('input');
         cb.type = 'checkbox'; cb.className = 'pick';
-        cb.onchange = () => { card.classList.toggle('on', cb.checked); updateBtn(); };
+        cb.onchange = () => {
+          card.classList.toggle('on', cb.checked);
+          // 訂單明細缺等級／包裝：勾了就直接打開修改區，讓人補上
+          if (cb.checked && !o.shipped && incomplete(o.rows) && edit.classList.contains('hidden')) swap.onclick();
+          updateBtn();
+        };
         const title = document.createElement('div');
         title.innerHTML = '';
         title.append(o.no + ' ' + o.customer);
@@ -145,10 +162,15 @@
         const lines = document.createElement('div'); lines.className = 'lines';
         lines.textContent = o.rows.map(rowLine).join('\n');
         card.append(lines);
+        if (!o.shipped && incomplete(o.rows)) {
+          const w = document.createElement('div'); w.className = 'done'; w.style.color = 'var(--warn)';
+          w.textContent = '⚠️ 訂單明細缺等級或包裝，勾選後請補上實際出貨的內容';
+          card.append(w);
+        }
 
         if (o.shipped) {
           const d = document.createElement('div'); d.className = 'done';
-          const changed = rowsKey(o.shipped.rows) !== rowsKey(o.rows);
+          const changed = !sameAsOrder(o.shipped.rows, o.rows);
           d.textContent = '✅ 已出貨（' + o.shipped.by + ' ' + String(o.shipped.at).slice(5) + '）'
             + (changed ? '\n實際出：\n' + o.shipped.rows.map(rowLine).join('\n') + '\n替換原因：' + o.shipped.reason : '')
             + '\n要修改請勾選後按「有替換」';
@@ -193,7 +215,7 @@
     $('all').onclick = () => {
       document.querySelectorAll('.order').forEach((c) => {
         const o = ORDERS.find((x) => String(x.id) === c.dataset.id);
-        if (o && !o.shipped) { c.querySelector('.pick').checked = true; c.classList.add('on'); }
+        if (o && !o.shipped && !c.querySelector('.pick').checked) { c.querySelector('.pick').checked = true; c.querySelector('.pick').onchange(); }
       });
       updateBtn();
     };
@@ -300,7 +322,10 @@
           if (!rows.length || rows.some((r) => !r.grade || !r.pack || !(Number(r.qty) > 0))) {
             showMsg(o.no + '：實際出貨每一列都要選等級、包裝方式、填數量', true); return;
           }
-          if (rowsKey(rows) !== rowsKey(o.rows) && !reason) { showMsg(o.no + '：有替換，請填替換原因', true); return; }
+          if (!sameAsOrder(rows, o.rows) && !reason) { showMsg(o.no + '：有替換，請填替換原因', true); return; }
+        } else if (incomplete(rows)) {
+          card.querySelector('.swap').onclick();
+          showMsg(o.no + '：訂單明細缺等級或包裝，請在下方補上實際出貨的內容', true); return;
         }
         items.push({ orderId: o.id, rows: rows.map((r) => ({ grade: r.grade, pack: r.pack, qty: String(r.qty) })), reason: reason });
       }
