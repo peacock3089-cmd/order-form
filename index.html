@@ -51,7 +51,7 @@
 
     <form id="form">
       <!-- 欄位順序與機器人回覆格式一致 -->
-      <label for="shipDate">出貨日期</label>
+      <label for="shipDate">出貨日期（週日不出貨）</label>
       <input type="date" id="shipDate" required>
 
       <label for="shipMethod">出貨方式</label>
@@ -330,7 +330,20 @@
 
     $('addRow').onclick = addRow;
     addRow();
-    $('shipDate').value = new Date().toLocaleDateString('sv-SE'); // 預設今天（yyyy-mm-dd，本地時區）
+    // ---- 週日不出貨 ----
+    const isSunday = (ymd) => { const p = ymd.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]).getDay() === 0; };
+    // 預設今天；今天是週日就預設隔天（週一）
+    const d0 = new Date();
+    if (d0.getDay() === 0) d0.setDate(d0.getDate() + 1);
+    $('shipDate').value = d0.toLocaleDateString('sv-SE');
+    $('shipDate').addEventListener('change', () => {
+      if ($('shipDate').value && isSunday($('shipDate').value)) {
+        $('shipDate').value = '';
+        showMsg('週日不出貨，請選其他出貨日期', true);
+      } else {
+        showMsg('');
+      }
+    });
 
     function idTokenExpiresSoon(minutes) {
       const t = liff.getDecodedIDToken();
@@ -357,7 +370,7 @@
       // groupId 由機器人在群組貼出的連結帶進來：https://liff.line.me/{LIFF_ID}?gid=Cxxxx
       groupId = new URLSearchParams(location.search).get('gid') || '';
       if (!groupId) {
-        showMsg('請從群組內機器人貼出的「登記連結」開啟本表單', true);
+        showMsg('請在群組打「訂單」，從機器人貼出的連結開啟本表單', true);
         return;
       }
 
@@ -391,6 +404,11 @@
         return;
       }
       const customer = $('customer').value.trim();
+      if (isSunday($('shipDate').value)) {
+        showMsg('週日不出貨，請選其他出貨日期', true);
+        $('btn').disabled = false;
+        return;
+      }
       const shipDate = $('shipDate').value.replace(/-/g, '/'); // Ragic 日期格式 yyyy/MM/dd
       const rows = readRows();
 
