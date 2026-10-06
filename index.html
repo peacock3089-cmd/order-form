@@ -347,6 +347,7 @@
     let shipDirty = false; // 使用者自己改過出貨日期就不再自動調整
     function noShip(v) { // v: yyyy-mm-dd；可以出貨回傳空字串
       if (!v) return '';
+      if (v < new Date().toLocaleDateString('sv-SE')) return '出貨日期不能選過去的日期';
       const p = v.split('-').map(Number);
       if (new Date(p[0], p[1] - 1, p[2]).getDay() === 0) return '週日不出貨，請選其他出貨日期';
       if (BLOCKED.indexOf(v) >= 0) return v.slice(5).replace('-', '/') + (REASONS[v] ? ' ' + REASONS[v] : '') + ' 停止出貨，請選其他出貨日期';
@@ -369,6 +370,7 @@
       return d.toLocaleDateString('sv-SE');
     }
     $('shipDate').value = firstShipDay();
+    $('shipDate').min = new Date().toLocaleDateString('sv-SE'); // 日曆上過去的日期反灰
     $('shipDate').addEventListener('change', () => {
       shipDirty = true;
       const why = noShip($('shipDate').value);
