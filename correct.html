@@ -209,6 +209,12 @@
       if (missing.length) { showMsg('請填：' + missing.join('、') + '（沒有就填 0）', true); return; }
       const special = $('special').checked;
       if (special && !$('note').value.trim()) { showMsg('勾了「特殊情況」，請在備註寫原因', true); return; }
+      // 週六、週日校正：提醒提前包裝好的蛋也要算進去（以台灣時間判斷）
+      const wd = new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Taipei', weekday: 'short' });
+      if ((wd === 'Sat' || wd === 'Sun') && !confirm('提前包裝的要計入庫存喔！！\n\n確定要送出嗎？')) {
+        showMsg('已取消送出，可以修改數量再送');
+        return;
+      }
 
       $('btn').disabled = true;
       showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
