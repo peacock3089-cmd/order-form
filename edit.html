@@ -37,9 +37,12 @@
     <h1>改單申請</h1>
     <div class="who" id="who">載入中…</div>
 
+    <label for="pickDate">訂單的出貨日期</label>
+    <input type="date" id="pickDate">
+
     <label for="order">要改哪張訂單</label>
     <select id="order" disabled><option value="">載入訂單中…</option></select>
-    <div class="hint">只會列出你自己登記、還沒取消、出貨日是今天或之後的訂單</div>
+    <div class="hint">只會列出你自己登記、還沒取消、這天出貨的訂單</div>
     <div class="pending" id="pending"></div>
 
     <form id="form" class="hidden">
@@ -207,6 +210,11 @@
     $('clearDispatch').onclick = () => { $('dispatchDate').value = ''; };
 
     async function loadOrders() {
+      const sel = $('order');
+      sel.disabled = true;
+      sel.innerHTML = '<option value="">載入訂單中…</option>';
+      $('form').classList.add('hidden');
+      $('pending').textContent = '';
       // GAS 偶爾回 Google 的錯誤網頁（不是 JSON）：自動再試 2 次
       let data;
       for (let attempt = 0; ; attempt++) {
@@ -214,7 +222,7 @@
           const res = await fetch(GAS_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ type: 'my_orders', idToken: liff.getIDToken(), groupId: groupId }),
+            body: JSON.stringify({ type: 'my_orders', idToken: liff.getIDToken(), groupId: groupId, date: $('pickDate').value.replace(/-/g, '/') }),
           });
           const text = await res.text();
           data = JSON.parse(text);
@@ -229,10 +237,9 @@
       if (!data.ok) throw new Error(data.error);
       ORDERS = data.orders;
       OPTS = data.options || OPTS;
-      const sel = $('order');
       sel.innerHTML = '';
       if (!ORDERS.length) {
-        sel.append(new Option('沒有可以修改的訂單', ''));
+        sel.append(new Option('這天沒有你可以修改的訂單', ''));
         return;
       }
       sel.append(new Option('請選擇訂單', ''));
@@ -301,6 +308,14 @@
 
       const profile = await liff.getProfile();
       $('who').textContent = '申請人：' + profile.displayName;
+      const today = new Date().toLocaleDateString('sv-SE');
+      $('pickDate').value = today;
+      $('pickDate').min = today; // 只能改今天或之後出貨的訂單
+      $('pickDate').addEventListener('change', () => {
+        if (!$('pickDate').value) return;
+        if ($('pickDate').value < today) { $('pickDate').value = today; showMsg('只能改今天或之後出貨的訂單', true); }
+        loadOrders().catch((e) => showMsg('讀取失敗：' + e.message, true));
+      });
       await loadOrders();
     }
 
