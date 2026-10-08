@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>出貨確認</title>
+  <title>包裝清單</title>
   <style>
     :root { --main: #06c755; --text: #222; --muted: #777; --bg: #f5f5f5; --line: #ddd; --warn: #b45309; }
     * { box-sizing: border-box; }
@@ -46,7 +46,7 @@
 </head>
 <body>
   <div class="card">
-    <h1>🚚 出貨確認</h1>
+    <h1>🚚 包裝清單</h1>
     <div class="who" id="who">載入中…</div>
 
     <label for="date">出貨日期</label>
@@ -289,7 +289,7 @@
       try { sessionStorage.removeItem('relogin'); } catch (e) {}
 
       groupId = new URLSearchParams(location.search).get('gid') || '';
-      if (!groupId) { showMsg('請在群組打「出貨」，從機器人貼出的連結開啟本表單', true); return; }
+      if (!groupId) { showMsg('請在群組打「包裝」，從機器人貼出的連結開啟本表單', true); return; }
 
       try {
         const perm = await liff.permission.query('chat_message.write');
@@ -302,7 +302,7 @@
 
       const profile = await liff.getProfile();
       $('who').textContent = '確認人：' + profile.displayName;
-      // 從「出貨 明天」這類清單點進來：直接打開那一天
+      // 從「包裝 明天」這類清單點進來：直接打開那一天
       const d = new URLSearchParams(location.search).get('d') || '';
       if (/^\d{4}-\d{2}-\d{2}$/.test(d)) $('date').value = d;
       await loadList(true);
