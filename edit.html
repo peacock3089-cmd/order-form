@@ -244,8 +244,8 @@
       }
       sel.append(new Option('請選擇訂單', ''));
       ORDERS.forEach((o) => {
-        const ship = o.fields.SHIP_DATE ? '出貨 ' + o.fields.SHIP_DATE.slice(5) : '未填出貨日';
-        sel.append(new Option(o.no + '｜' + (o.fields.CUSTOMER || '—') + '｜' + ship + (o.pending ? '｜申請中' : ''), String(o.id)));
+        // 日期已經選了，改顯示出貨方式：同一天同客戶的單才分得出來
+        sel.append(new Option(o.no + '｜' + (o.fields.CUSTOMER || '—') + '｜' + (o.fields.SHIP_METHOD || '未選出貨方式') + (o.pending ? '｜申請中' : ''), String(o.id)));
       });
       sel.disabled = false;
     }
