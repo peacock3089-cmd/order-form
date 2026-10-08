@@ -257,8 +257,7 @@
     async function showCopyFallback(text) {
       const head = '✅ 已確認出貨（請勿重新送出）\n群組通知沒發出，電腦端請在群組貼上：' + text;
       const done = () => {
-        showMsg(head + '\n（已自動複製，到群組按 Ctrl + V、Enter 即可）\n5 秒後自動關閉');
-        setTimeout(() => liff.closeWindow(), 5000);
+        showMsg(head + '\n（已自動複製，到群組按 Ctrl + V、Enter 即可）\n貼好後可以自己關掉這個視窗');
       };
       if (await copyText(text)) return done();
       showMsg(head);
