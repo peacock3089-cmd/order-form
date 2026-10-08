@@ -53,6 +53,13 @@
         <label for="shipMethod">出貨方式</label>
         <select id="shipMethod"></select>
 
+        <label for="dispatchDate">派車日期（親送才用）</label>
+        <div style="display:flex;gap:8px">
+          <input type="date" id="dispatchDate" style="flex:1">
+          <button type="button" id="clearDispatch" style="flex:none;padding:0 12px;border:1px solid #ccc;border-radius:8px;background:#fff;font-size:15px">清空</button>
+        </div>
+        <div class="hint">清空＝取消派車，這張單會回到「派車」清單</div>
+
         <label for="customer">客戶</label>
         <input id="customer">
 
@@ -144,6 +151,7 @@
       $('editArea').classList.remove('hidden');
       $('shipDate').value = (o.fields.SHIP_DATE || '').replace(/\//g, '-');
       fillSelect($('shipMethod'), '（未選）', OPTS.shipMethod, o.fields.SHIP_METHOD);
+      $('dispatchDate').value = (o.fields.DISPATCH_DATE || '').replace(/\//g, '-');
       $('customer').value = o.fields.CUSTOMER || '';
       $('rows').innerHTML = '';
       (o.rows.length ? o.rows : [null]).forEach(addRow);
@@ -196,6 +204,7 @@
       }
     });
     $('addRow').onclick = () => addRow();
+    $('clearDispatch').onclick = () => { $('dispatchDate').value = ''; };
 
     async function loadOrders() {
       // GAS 偶爾回 Google 的錯誤網頁（不是 JSON）：自動再試 2 次
@@ -317,6 +326,7 @@
         fields: cancel ? {} : {
           SHIP_DATE: $('shipDate').value.replace(/-/g, '/'),
           SHIP_METHOD: $('shipMethod').value,
+          DISPATCH_DATE: $('dispatchDate').value.replace(/-/g, '/'),
           CUSTOMER: $('customer').value.trim(),
           PAY_METHOD: $('payMethod').value,
           INVOICE: $('invoice').value,
