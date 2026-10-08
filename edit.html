@@ -198,12 +198,25 @@
     $('addRow').onclick = () => addRow();
 
     async function loadOrders() {
-      const res = await fetch(GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ type: 'my_orders', idToken: liff.getIDToken(), groupId: groupId }),
-      });
-      const data = await res.json();
+      // GAS 偶爾回 Google 的錯誤網頁（不是 JSON）：自動再試 2 次
+      let data;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const res = await fetch(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ type: 'my_orders', idToken: liff.getIDToken(), groupId: groupId }),
+          });
+          const text = await res.text();
+          data = JSON.parse(text);
+          break;
+        } catch (e) {
+          if (attempt >= 2) throw new Error('伺服器忙碌，請稍後關掉表單重開（' + e.message.slice(0, 40) + '）');
+          showMsg('連線不穩，自動重試中…（' + (attempt + 1) + '/2）');
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      }
+      showMsg('');
       if (!data.ok) throw new Error(data.error);
       ORDERS = data.orders;
       OPTS = data.options || OPTS;
