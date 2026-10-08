@@ -58,6 +58,7 @@
   </div>
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="progress.js"></script>
   <script>
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
@@ -221,6 +222,7 @@
 
       $('btn').disabled = true;
       showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
+      const prog = SubmitProgress($('btn'), 'correct'); // 送出按鈕變預估進度條
       const date = new Date().toLocaleDateString('sv-SE').replace(/-/g, '/');
       const body = JSON.stringify({
         type: 'corr_submit', submitId: submitId, idToken: liff.getIDToken(), groupId: groupId,
@@ -242,6 +244,7 @@
 
       try {
         const res = await postWithRetry();
+        prog.received();
         const data = await res.json();
         if (data.needConfirm) {
           // 誤差超過 50 顆：先擋下來，請再點一次；確定沒錯才勾特殊情況＋寫原因
@@ -255,6 +258,7 @@
           $('warn').classList.add('show');
           $('warn').scrollIntoView({ behavior: 'smooth', block: 'center' });
           showMsg('');
+          prog.reset();
           $('btn').disabled = false;
           return;
         }
@@ -263,16 +267,19 @@
         try {
           await liff.sendMessages([{ type: 'text', text: '🔧 我校正了庫存（' + date.slice(5) + '）\n（' + code + '）' }]);
         } catch (e) {
+          prog.finish('✅ 已送出');
           showCopyFallback(code);
           return;
         }
         showMsg('✅ 已校正！');
+        prog.finish();
         setTimeout(() => liff.closeWindow(), 1200);
       } catch (e) {
         const msg = e.name === 'AbortError' || e.name === 'TypeError'
           ? '連線不穩，可能已經送出。請直接再按一次「送出校正」確認（不會重複）'
           : '送出失敗：' + e.message;
         showMsg(msg, true);
+        prog.reset();
         $('btn').disabled = false;
       } finally {
         clearTimeout(timer);

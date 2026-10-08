@@ -64,6 +64,7 @@
   </div>
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="progress.js"></script>
   <script>
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
@@ -335,6 +336,7 @@
 
       $('btn').disabled = true;
       showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
+      const prog = SubmitProgress($('btn'), 'ship'); // 送出按鈕變預估進度條
       const body = JSON.stringify({ type: 'ship_submit', submitId: submitId, idToken: liff.getIDToken(), groupId: groupId, items: items });
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 60000);
@@ -352,22 +354,26 @@
 
       try {
         const res = await postWithRetry();
+        prog.received();
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || '未知錯誤');
         const code = '出貨編號 #' + data.ids;
         try {
           await liff.sendMessages([{ type: 'text', text: '🚚 我確認出貨了 ' + data.count + ' 張\n（' + code + '）' }]);
         } catch (e) {
+          prog.finish('✅ 已送出');
           showCopyFallback(code);
           return;
         }
         showMsg('✅ 已確認出貨！');
+        prog.finish();
         setTimeout(() => liff.closeWindow(), 1500);
       } catch (e) {
         const msg = e.name === 'AbortError' || e.name === 'TypeError'
           ? '連線不穩，可能已經送出。請直接再按一次「確認出貨」（不會重複）'
           : '送出失敗：' + e.message;
         showMsg(msg, true);
+        prog.reset();
         $('btn').disabled = false;
       } finally {
         clearTimeout(timer);

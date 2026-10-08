@@ -54,6 +54,7 @@
   </div>
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="progress.js"></script>
   <script>
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
@@ -273,6 +274,7 @@
       const type = $('type').value;
       const blocks = readBlocks().filter((b) => sum(b.houses) || sum(b.grades));
       showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
+      const prog = SubmitProgress($('btn'), 'stock'); // 送出按鈕變預估進度條
 
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 60000);
@@ -295,6 +297,7 @@
 
       try {
         const res = await postWithRetry();
+        prog.received();
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || '未知錯誤');
         if (!data.ids || !data.ids.length) throw new Error('伺服器回應異常');
@@ -308,6 +311,7 @@
               + '\n（' + code + '）',
           }]);
         } catch (e) {
+          prog.finish('✅ 已送出');
           showCopyFallback(code);
           return;
         }
@@ -317,12 +321,14 @@
           return;
         }
         showMsg('✅ 已送出！');
+        prog.finish();
         setTimeout(() => liff.closeWindow(), 1200);
       } catch (e) {
         const msg = e.name === 'AbortError' || e.name === 'TypeError'
           ? '連線不穩，可能已經登記成功。請直接再按一次「送出」確認（不會重複登記）'
           : '送出失敗：' + e.message;
         showMsg(msg, true);
+        prog.reset();
         $('btn').disabled = false;
       } finally {
         clearTimeout(timer);

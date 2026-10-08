@@ -109,6 +109,7 @@
   </div>
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="progress.js"></script>
   <script>
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
@@ -466,6 +467,7 @@
       }
 
       showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
+      const prog = SubmitProgress($('btn'), photos.length || files.length ? 'order_att' : 'order'); // 送出按鈕變預估進度條
       const ctrl = new AbortController();
       // 有附件時上傳較久，等候時間拉長
       const timer = setTimeout(() => ctrl.abort(), photos.length || files.length ? 120000 : 45000);
@@ -506,6 +508,7 @@
             files: files,
             item: $('item').value.trim(),
         }));
+        prog.received();
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || '未知錯誤');
         // 只有真正寫進 Ragic 才會有 ragicId；只看 ok:true 不算數
@@ -522,16 +525,19 @@
           }]);
         } catch (e) {
           // 電腦版 LINE 不能代發訊息 → 把「登記編號 #N」複製好，使用者到群組貼上送出，機器人一樣會回（免費）
+          prog.finish('✅ 已送出');
           showCopyFallback('登記編號 #' + data.ragicId);
           return;
         }
 
         if (data.uploadError) {
           // 訂單已成立，只是附件沒上去；不要自動關閉，讓使用者看到提醒
+          prog.finish('✅ 已登記');
           showMsg('✅ 已登記成功（請勿重新送出），但照片／檔案上傳失敗，請到 Ragic 該筆訂單補上傳', true);
           return;
         }
         showMsg('✅ 已送出！');
+        prog.finish();
         setTimeout(() => liff.closeWindow(), 1200);
       } catch (e) {
         // 逾時 ≠ 失敗：可能其實已寫入。再按送出也安全（同一個 submitId 不會重複建立）
@@ -540,6 +546,7 @@
           ? '連線不穩，可能已經登記成功。請直接再按一次「送出」確認（不會重複登記）'
           : '送出失敗：' + e.message;
         showMsg(msg, true);
+        prog.reset();
         $('btn').disabled = false;
       } finally {
         clearTimeout(timer);
