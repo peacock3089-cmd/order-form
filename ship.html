@@ -42,6 +42,7 @@
     .msg { margin-top: 14px; text-align: center; white-space: pre-line; }
     .err { color: #d00; }
     .hidden { display: none; }
+      ::placeholder { color: #aaa; opacity: 1; }
   </style>
 </head>
 <body>
@@ -113,7 +114,7 @@
       const pack = document.createElement('select'); pack.className = 'pack';
       fillSelect(pack, '包裝方式', OPTS.packs || [], r.pack);
       const qty = document.createElement('input');
-      qty.type = 'number'; qty.inputMode = 'numeric'; qty.min = '1'; qty.step = '1'; qty.placeholder = '數量';
+      qty.type = 'number'; qty.inputMode = 'numeric'; qty.min = '1'; qty.step = '1'; qty.placeholder = '例：5';
       qty.value = r.qty || '';
       const del = document.createElement('button');
       del.type = 'button'; del.className = 'del'; del.textContent = '✕';
@@ -186,7 +187,7 @@
         const add = document.createElement('button'); add.type = 'button'; add.className = 'add'; add.textContent = '＋ 新增一列';
         add.onclick = () => addRow(box);
         const rl = document.createElement('label'); rl.textContent = '替換原因（有替換必填）'; rl.style.marginTop = '10px';
-        const reason = document.createElement('textarea'); reason.className = 'reason'; reason.placeholder = '例如：良蛋不夠，用大蛋補';
+        const reason = document.createElement('textarea'); reason.className = 'reason'; reason.placeholder = '例：良蛋不夠，用大蛋補';
         edit.append(hint, box, add, rl, reason);
         swap.onclick = () => {
           if (!edit.classList.contains('hidden')) return;

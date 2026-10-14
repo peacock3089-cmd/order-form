@@ -28,6 +28,7 @@
     .submit:disabled { background: #aaa; }
     .msg { margin-top: 14px; text-align: center; white-space: pre-line; }
     .err { color: #d00; }
+      ::placeholder { color: #aaa; opacity: 1; }
   </style>
 </head>
 <body>
@@ -50,7 +51,7 @@
       </div>
 
       <label for="note">備註</label>
-      <textarea id="note" placeholder="選填；特殊情況請寫原因，例如：緊急剎車破損 80 顆"></textarea>
+      <textarea id="note" placeholder="選填；特殊情況請寫原因，例：緊急剎車破損 80 顆"></textarea>
 
       <button type="submit" class="submit" id="btn" disabled>送出校正</button>
     </form>
@@ -90,7 +91,7 @@
         const optional = OPTIONAL.indexOf(cat) >= 0;
         inp.type = 'number'; inp.inputMode = 'numeric'; inp.min = '0'; inp.step = '1'; inp.required = !optional;
         inp.dataset.cat = cat;
-        inp.placeholder = optional ? '有單獨留才填' : '0';
+        inp.placeholder = optional ? '有單獨留才填' : '例：1200';
         if (keep[cat] !== undefined) inp.value = keep[cat];
         inp.oninput = () => { updateTotal(); hideWarn(); };
         div.append(span, inp);

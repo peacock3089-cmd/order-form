@@ -30,6 +30,7 @@
     .msg { margin-top: 14px; text-align: center; white-space: pre-line; }
     .err { color: #d00; }
     .hidden { display: none; }
+      ::placeholder { color: #aaa; opacity: 1; }
   </style>
 </head>
 <body>
@@ -64,7 +65,7 @@
         <div class="hint">清空＝取消派車，這張單會回到「派車」清單</div>
 
         <label for="customer">客戶</label>
-        <input id="customer">
+        <input id="customer" placeholder="例：墨達燒肉">
 
         <div class="label">出貨明細</div>
         <div id="rows"></div>
@@ -77,14 +78,14 @@
         <select id="invoice"></select>
 
         <label for="item">備註</label>
-        <textarea id="item"></textarea>
+        <textarea id="item" placeholder="選填，例：送達時先打電話"></textarea>
 
         <label for="amount">匯款金額</label>
-        <input type="number" id="amount" inputmode="numeric" min="0" step="1">
+        <input type="number" id="amount" inputmode="numeric" min="0" step="1" placeholder="選填，例：1530">
       </div>
 
       <label for="reason">修改原因（必填）</label>
-      <textarea id="reason" required placeholder="例如：客戶追加、延後出貨…"></textarea>
+      <textarea id="reason" required placeholder="例：客戶追加、延後出貨、少打一個零"></textarea>
 
       <button type="submit" class="submit" id="btn">送出申請</button>
     </form>
@@ -128,7 +129,7 @@
       const pack = document.createElement('select'); pack.className = 'pack'; pack.required = true;
       fillSelect(pack, r.pack ? '包裝方式' : '包裝方式（原本空白，請選）', OPTS.packs, r.pack);
       const qty = document.createElement('input');
-      qty.type = 'number'; qty.inputMode = 'numeric'; qty.min = '1'; qty.step = '1'; qty.required = true; qty.placeholder = '數量';
+      qty.type = 'number'; qty.inputMode = 'numeric'; qty.min = '1'; qty.step = '1'; qty.required = true; qty.placeholder = '例：5';
       qty.value = r.qty || '';
       const del = document.createElement('button');
       del.type = 'button'; del.className = 'del'; del.textContent = '✕';

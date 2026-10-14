@@ -30,6 +30,7 @@
     .submit:disabled { background: #aaa; }
     .msg { margin-top: 14px; text-align: center; white-space: pre-line; }
     .err { color: var(--bad); }
+      ::placeholder { color: #aaa; opacity: 1; }
   </style>
 </head>
 <body>
@@ -73,7 +74,7 @@
         const diff = document.createElement('div'); diff.className = 'diff'; diff.textContent = c.diff;
         const reason = document.createElement('div'); reason.className = 'reason'; reason.textContent = '原因：' + c.reason;
         const row = document.createElement('div'); row.className = 'choice';
-        const note = document.createElement('textarea'); note.className = 'note'; note.placeholder = '說明（駁回必填，核准可不填）';
+        const note = document.createElement('textarea'); note.className = 'note'; note.placeholder = '說明（駁回必填），例：已經出貨了，不能改';
         [['approve', '👍 核准'], ['reject', '❌ 駁回'], ['skip', '略過']].forEach(([v, label]) => {
           const b = document.createElement('button'); b.type = 'button'; b.className = v; b.textContent = label;
           b.onclick = () => {

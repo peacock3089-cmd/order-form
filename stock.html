@@ -29,6 +29,7 @@
     .submit:disabled { background: #aaa; }
     .msg { margin-top: 14px; text-align: center; white-space: pre-line; }
     .err { color: var(--bad); }
+      ::placeholder { color: #aaa; opacity: 1; }
   </style>
 </head>
 <body>
@@ -46,7 +47,7 @@
       <div id="blocks"></div>
 
       <label for="note">備註</label>
-      <textarea id="note" placeholder="選填"></textarea>
+      <textarea id="note" placeholder="選填，例：第三棟另有 20 顆破蛋先放旁邊"></textarea>
 
       <button type="submit" class="submit" id="btn" disabled>送出</button>
     </form>
@@ -90,6 +91,7 @@
       inp.inputMode = 'numeric';
       inp.min = '0';
       inp.step = '1';
+      inp.placeholder = '例：300';
       inp.dataset.kind = kind;
       inp.dataset.name = name;
       inp.oninput = updateChecks;
