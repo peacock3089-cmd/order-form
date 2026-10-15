@@ -79,6 +79,13 @@
         <option value="">（未選）</option>
         <option>二聯</option><option>三聯</option>
       </select>
+      <!-- 選三聯才出現，必填 -->
+      <div id="triBox" style="display:none">
+        <label for="invTitle">三聯抬頭（必填）</label>
+        <input id="invTitle" placeholder="例：墨達燒肉有限公司">
+        <label for="invTax">三聯統編（必填，8 碼數字）</label>
+        <input id="invTax" inputmode="numeric" maxlength="8" placeholder="例：12345678">
+      </div>
 
       <label for="item">備註</label>
       <textarea id="item" placeholder="選填，例：送達時先打電話；轉單三個地址各出 3 盒"></textarea>
@@ -341,6 +348,8 @@
     }
 
     $('addRow').onclick = addRow;
+    // 發票選三聯 → 顯示抬頭、統編（必填）
+    $('invoice').addEventListener('change', () => { $('triBox').style.display = $('invoice').value === '三聯' ? '' : 'none'; });
     addRow();
     // ---- 不出貨的日子：週日＋Ragic「停止出貨日期清單」 ----
     let BLOCKED = []; // yyyy-mm-dd；表單打開後從 GAS 讀
@@ -442,6 +451,12 @@
         return;
       }
       const customer = $('customer').value.trim();
+      const tri = $('invoice').value === '三聯';
+      if (tri && (!$('invTitle').value.trim() || !/^\d{8}$/.test($('invTax').value.trim()))) {
+        showMsg(!$('invTitle').value.trim() ? '發票選三聯，請填三聯抬頭' : '三聯統編要 8 碼數字', true);
+        $('btn').disabled = false;
+        return;
+      }
       if (noShip($('shipDate').value)) {
         showMsg(noShip($('shipDate').value), true);
         $('btn').disabled = false;
@@ -502,6 +517,8 @@
             shipMethod: $('shipMethod').value,
             payMethod: $('payMethod').value,
             invoice: $('invoice').value,
+            invTitle: tri ? $('invTitle').value.trim() : '',
+            invTax: tri ? $('invTax').value.trim() : '',
             amount: $('amount').value,
             rows: rows,
             tags: checkedTags().map((c) => c.value),

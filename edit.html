@@ -76,6 +76,12 @@
 
         <label for="invoice">發票方式</label>
         <select id="invoice"></select>
+        <div id="triBox" style="display:none">
+          <label for="invTitle">三聯抬頭（必填）</label>
+          <input id="invTitle" placeholder="例：墨達燒肉有限公司">
+          <label for="invTax">三聯統編（必填，8 碼數字）</label>
+          <input id="invTax" inputmode="numeric" maxlength="8" placeholder="例：12345678">
+        </div>
 
         <label for="item">備註</label>
         <textarea id="item" placeholder="選填，例：送達時先打電話"></textarea>
@@ -162,6 +168,10 @@
       (o.rows.length ? o.rows : [null]).forEach(addRow);
       fillSelect($('payMethod'), '（未選）', OPTS.payMethod, o.fields.PAY_METHOD);
       fillSelect($('invoice'), '（未選）', OPTS.invoice, o.fields.INVOICE);
+      $('invTitle').value = o.fields.INV_TITLE || '';
+      // Ragic 統編是數字欄位，0 開頭會被吃掉 → 補回 8 碼
+      $('invTax').value = o.fields.INV_TAX ? String(o.fields.INV_TAX).padStart(8, '0') : '';
+      showTri();
       $('item').value = o.fields.ITEM || '';
       $('amount').value = o.fields.AMOUNT || '';
       $('reason').value = '';
@@ -209,6 +219,9 @@
       }
     });
     $('addRow').onclick = () => addRow();
+    // 發票選三聯 → 顯示抬頭、統編（必填）
+    function showTri() { $('triBox').style.display = $('invoice').value === '三聯' ? '' : 'none'; }
+    $('invoice').addEventListener('change', showTri);
     $('clearDispatch').onclick = () => { $('dispatchDate').value = ''; };
 
     async function loadOrders() {
@@ -333,6 +346,10 @@
       // 改到週六／國定假日／補假：再確認一次（沒改日期不問）
       const warn = !cancel && $('shipDate').value !== (o.fields.SHIP_DATE || '').replace(/\//g, '-') ? holidayWarn($('shipDate').value) : '';
       if (warn && !confirm('出貨日 ' + warn + '\n\n你要跟林大場長確認喔!! 出包算你的...\n\n確定要送出嗎？')) return;
+      if (!cancel && $('invoice').value === '三聯' && (!$('invTitle').value.trim() || !/^\d{8}$/.test($('invTax').value.trim()))) {
+        showMsg(!$('invTitle').value.trim() ? '發票選三聯，請填三聯抬頭' : '三聯統編要 8 碼數字', true);
+        return;
+      }
       $('btn').disabled = true;
       showMsg('送出中…（偶爾需要 10–30 秒，請勿關閉）');
       const prog = SubmitProgress($('btn'), 'edit'); // 送出按鈕變預估進度條
@@ -347,6 +364,8 @@
           CUSTOMER: $('customer').value.trim(),
           PAY_METHOD: $('payMethod').value,
           INVOICE: $('invoice').value,
+          INV_TITLE: $('invoice').value === '三聯' ? $('invTitle').value.trim() : '',
+          INV_TAX: $('invoice').value === '三聯' ? $('invTax').value.trim() : '',
           ITEM: $('item').value.trim(),
           AMOUNT: $('amount').value,
         },
