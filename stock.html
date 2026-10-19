@@ -56,6 +56,7 @@
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="progress.js"></script>
+  <script src="quick.js"></script>
   <script>
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
@@ -185,14 +186,18 @@
         });
         const data = await res.json();
         if (!data.ok || !data.options) return;
-        const o = data.options;
-        if (o.eggGroups && o.eggGroups.length) OPTS.eggGroups = o.eggGroups;
-        if (o.stockTypes && o.stockTypes.length) OPTS.stockTypes = o.stockTypes;
-        fillTypes();
-        render();
+        // 跟手機上存的一樣就不用重畫（重畫也會保留已填的數字）
+        if (QuickCache.set('stock', { eggGroups: data.options.eggGroups, stockTypes: data.options.stockTypes })) showOptions(data.options);
       } catch (e) {
         console.warn('選項讀取失敗，用備用值：' + e.message);
       }
+    }
+
+    function showOptions(o) {
+      if (o.eggGroups && o.eggGroups.length) OPTS.eggGroups = o.eggGroups;
+      if (o.stockTypes && o.stockTypes.length) OPTS.stockTypes = o.stockTypes;
+      fillTypes();
+      render();
     }
 
     // ---- 電腦版：複製進貨編號 ----
@@ -227,6 +232,9 @@
       $('date').value = new Date().toLocaleDateString('sv-SE');
       fillTypes();
       render();
+      // 先用手機上次存的棟別、等級把表單畫好（不用等登入和 GAS）
+      const cached = QuickCache.get('stock');
+      if (cached) showOptions(cached);
 
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }

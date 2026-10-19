@@ -60,6 +60,7 @@
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="progress.js"></script>
+  <script src="quick.js"></script>
   <script>
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
@@ -125,14 +126,21 @@
           body: JSON.stringify({ type: 'init', idToken: liff.getIDToken(), groupId: groupId }),
         });
         const data = await res.json();
-        if (data.ok && data.options && data.options.warnDates) WARN = data.options.warnDates;
-        if (data.ok && data.options && data.options.stockCats && data.options.stockCats.length) {
-          CATS = data.options.stockCats;
-          if (data.options.stockOptional) OPTIONAL = data.options.stockOptional;
-          render();
-        }
+        if (!data.ok || !data.options) return;
+        const o = { warnDates: data.options.warnDates, stockCats: data.options.stockCats, stockOptional: data.options.stockOptional };
+        // 跟手機上存的一樣就不用重畫（重畫也會保留已填的數字）
+        if (QuickCache.set('correct', o)) showOptions(o);
       } catch (e) {
         console.warn('品項讀取失敗，用備用值：' + e.message);
+      }
+    }
+
+    function showOptions(o) {
+      if (o.warnDates) WARN = o.warnDates;
+      if (o.stockCats && o.stockCats.length) {
+        CATS = o.stockCats;
+        if (o.stockOptional) OPTIONAL = o.stockOptional;
+        render();
       }
     }
 
@@ -168,6 +176,9 @@
       // 校正日期固定是今天（只顯示，不能改；伺服器也一律用今天）
       $('date').textContent = '今天 ' + new Date().toLocaleDateString('sv-SE').replace(/-/g, '/');
       render();
+      // 先用手機上次存的品項把表單畫好（不用等登入和 GAS）
+      const cached = QuickCache.get('correct');
+      if (cached) showOptions(cached);
 
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }

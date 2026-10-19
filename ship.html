@@ -66,6 +66,7 @@
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="progress.js"></script>
+  <script src="quick.js"></script>
   <script>
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
@@ -147,6 +148,7 @@
         const cb = document.createElement('input');
         cb.type = 'checkbox'; cb.className = 'pick';
         cb.onchange = () => {
+          touched = true;
           card.classList.toggle('on', cb.checked);
           // 訂單明細缺等級／包裝：勾了就直接打開修改區，讓人補上
           if (cb.checked && !o.shipped && incomplete(o.rows) && edit.classList.contains('hidden')) swap.onclick();
@@ -191,6 +193,7 @@
         edit.append(hint, box, add, rl, reason);
         swap.onclick = () => {
           if (!edit.classList.contains('hidden')) return;
+          touched = true;
           box.innerHTML = '';
           ((o.shipped ? o.shipped.rows : o.rows).length ? (o.shipped ? o.shipped.rows : o.rows) : [null]).forEach((r) => addRow(box, r));
           reason.value = o.shipped ? o.shipped.reason : '';
@@ -211,7 +214,7 @@
     function updateBtn() {
       const n = picked().length;
       $('btn').textContent = n ? '確認出貨（' + n + ' 張）' : '確認出貨';
-      $('btn').disabled = !n;
+      $('btn').disabled = !n || !READY; // 拿到最新清單前不能送出（畫面上可能是手機存的舊資料）
     }
 
     $('all').onclick = () => {
@@ -229,15 +232,32 @@
       return data;
     }
 
-    async function loadList(withOptions) {
-      $('list').innerHTML = '<div class="empty">載入中…</div>';
-      $('btn').disabled = true;
-      const data = await post({ type: 'ship_list', idToken: liff.getIDToken(), groupId: groupId,
-        date: $('date').value.replace(/-/g, '/'), withOptions: withOptions });
+    let READY = false;   // 拿到 GAS 最新清單了沒
+    let touched = false; // 使用者開始勾／改了沒（勾了就不自動換畫面，免得勾的被洗掉）
+
+    function showList(data) {
       if (data.options) OPTS = data.options;
-      $('date').value = data.date.replace(/\//g, '-');
       ORDERS = data.orders;
       render();
+    }
+
+    // 先顯示手機上存的這一天清單（有的話），再跟 GAS 拿最新的；有變才換上
+    async function loadList(withOptions) {
+      const date = $('date').value.replace(/-/g, '/');
+      const name = 'ship_' + date;
+      READY = false;
+      touched = false;
+      const cached = QuickCache.get(name);
+      if (cached) showList(cached); else { $('list').innerHTML = '<div class="empty">載入中…</div>'; updateBtn(); }
+      const data = await post({ type: 'ship_list', idToken: liff.getIDToken(), groupId: groupId, date: date, withOptions: withOptions || !cached });
+      if ($('date').value.replace(/-/g, '/') !== date) return; // 等的時候又換了日期
+      if (!data.options) data.options = OPTS;
+      READY = true;
+      if (QuickCache.set(name, { orders: data.orders, options: data.options })) {
+        if (touched) { READY = false; showMsg('⚠️ 這天的清單剛有變動，請關掉重開再勾，避免勾到舊資料', true); }
+        else showList(data);
+      }
+      updateBtn();
     }
 
     $('date').addEventListener('change', () => {
@@ -275,6 +295,11 @@
     }
 
     async function main() {
+      // 日期先定好（連結帶的 d 或今天），並先顯示手機上存的這天清單（不用等登入和 GAS）
+      const d0 = new URLSearchParams(location.search).get('d') || '';
+      $('date').value = /^\d{4}-\d{2}-\d{2}$/.test(d0) ? d0 : new Date().toLocaleDateString('sv-SE');
+      const cached = QuickCache.get('ship_' + $('date').value.replace(/-/g, '/'));
+      if (cached) showList(cached);
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
 
@@ -303,9 +328,6 @@
 
       const profile = await liff.getProfile();
       $('who').textContent = '確認人：' + profile.displayName;
-      // 從「包裝 明天」這類清單點進來：直接打開那一天
-      const d = new URLSearchParams(location.search).get('d') || '';
-      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) $('date').value = d;
       await loadList(true);
     }
 

@@ -58,6 +58,7 @@
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="progress.js"></script>
+  <script src="quick.js"></script>
   <script>
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
@@ -87,7 +88,7 @@
         card.dataset.id = o.id;
         const cb = document.createElement('input');
         cb.type = 'checkbox'; cb.className = 'pick';
-        cb.onchange = () => { card.classList.toggle('on', cb.checked); updateBtn(); };
+        cb.onchange = () => { touched = true; card.classList.toggle('on', cb.checked); updateBtn(); };
         const body = document.createElement('div');
         const title = document.createElement('div'); title.className = 'title';
         title.textContent = o.no + ' ' + o.customer;
@@ -108,10 +109,11 @@
     function updateBtn() {
       const n = picked().length;
       $('btn').textContent = n ? '確認派車（' + n + ' 張）' : '確認派車';
-      $('btn').disabled = !n;
+      $('btn').disabled = !n || !READY; // 拿到最新清單前不能送出（畫面上可能是手機存的舊資料）
     }
 
     $('all').onclick = () => {
+      touched = true;
       document.querySelectorAll('.order').forEach((c) => { c.querySelector('.pick').checked = true; c.classList.add('on'); });
       updateBtn();
     };
@@ -120,16 +122,28 @@
       if (!$('from').value || !$('to').value) return;
       if ($('from').value > $('to').value) { showMsg('出貨日期區間的開始不能晚於結束', true); return; }
       showMsg('');
-      $('list').innerHTML = '<div class="empty">載入中…</div>';
-      $('btn').disabled = true;
+      // 先顯示手機上存的這段區間清單（有的話），再跟 GAS 拿最新的；有變才換上
+      const from = $('from').value.replace(/-/g, '/');
+      const to = $('to').value.replace(/-/g, '/');
+      const name = 'disp_' + from + '_' + to;
+      READY = false;
+      touched = false;
+      const cached = QuickCache.get(name);
+      if (cached) { ORDERS = cached; render(); } else { $('list').innerHTML = '<div class="empty">載入中…</div>'; updateBtn(); }
       const res = await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ type: 'dispatch_list', idToken: liff.getIDToken(), groupId: groupId,
-          from: $('from').value.replace(/-/g, '/'), to: $('to').value.replace(/-/g, '/') }) });
+        body: JSON.stringify({ type: 'dispatch_list', idToken: liff.getIDToken(), groupId: groupId, from: from, to: to }) });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || '未知錯誤');
-      ORDERS = data.orders;
-      render();
+      if ($('from').value.replace(/-/g, '/') !== from || $('to').value.replace(/-/g, '/') !== to) return; // 等的時候又換了日期
+      READY = true;
+      if (QuickCache.set(name, data.orders)) {
+        if (touched) { READY = false; showMsg('⚠️ 清單剛有變動，請關掉重開再勾，避免勾到已經派過的單', true); }
+        else { ORDERS = data.orders; render(); }
+      }
+      updateBtn();
     }
+    let READY = false;   // 拿到 GAS 最新清單了沒
+    let touched = false; // 使用者開始勾了沒（勾了就不自動換畫面）
     ['from', 'to'].forEach((id) => $(id).addEventListener('change', () => loadList().catch((e) => showMsg('讀取失敗：' + e.message, true))));
 
     // ---- 電腦版：複製派車編號 ----
@@ -164,6 +178,9 @@
       $('from').value = ymd(0);
       $('to').value = ymd(3);
       $('date').value = ymd(0);
+      // 先顯示手機上存的清單（不用等登入和 GAS）
+      const cached = QuickCache.get('disp_' + $('from').value.replace(/-/g, '/') + '_' + $('to').value.replace(/-/g, '/'));
+      if (cached) { ORDERS = cached; render(); }
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
 

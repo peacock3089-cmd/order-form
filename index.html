@@ -118,6 +118,7 @@
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="progress.js"></script>
+  <script src="quick.js"></script>
   <script>
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
@@ -230,25 +231,34 @@
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
-        if (data.options) applyOptions(data.options);
-        $('tagList').innerHTML = '';
-        if (!data.members.length) {
-          $('tagList').innerHTML = '<div class="taghint">還沒有成員資料（成員在群組講過話後才會出現）</div>';
-          return;
-        }
-        data.members.forEach((m) => {
-          const label = document.createElement('label');
-          const cb = document.createElement('input');
-          cb.type = 'checkbox';
-          cb.value = m.uid;
-          cb.dataset.name = m.name;
-          cb.onchange = updateTagBtn;
-          label.append(cb, document.createTextNode(m.name));
-          $('tagList').append(label);
-        });
+        // 跟手機上存的一樣就不用重畫；不一樣才換上最新的（已填的內容、勾的通知都會保留）
+        if (QuickCache.set('init', { options: data.options, members: data.members })) showInit(data.options, data.members);
       } catch (e) {
-        $('tagList').innerHTML = '<div class="taghint">成員載入失敗，這次無法 tag（' + e.message + '）</div>';
+        if (!QuickCache.get('init')) $('tagList').innerHTML = '<div class="taghint">成員載入失敗，這次無法 tag（' + e.message + '）</div>';
       }
+    }
+
+    function showInit(options, members) {
+      if (options) applyOptions(options);
+      const checked = checkedTags().map((c) => c.value);
+      $('tagList').innerHTML = '';
+      if (!members || !members.length) {
+        $('tagList').innerHTML = '<div class="taghint">還沒有成員資料（成員在群組講過話後才會出現）</div>';
+        updateTagBtn();
+        return;
+      }
+      members.forEach((m) => {
+        const label = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = m.uid;
+        cb.dataset.name = m.name;
+        cb.checked = checked.indexOf(m.uid) >= 0;
+        cb.onchange = updateTagBtn;
+        label.append(cb, document.createTextNode(m.name));
+        $('tagList').append(label);
+      });
+      updateTagBtn();
     }
 
     // ---- 照片／檔案 ----
@@ -398,6 +408,9 @@
     }
 
     async function main() {
+      // 先用手機上次存的選項、成員名單把表單畫好（不用等登入和 GAS）
+      const cached = QuickCache.get('init');
+      if (cached) showInit(cached.options, cached.members);
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
 

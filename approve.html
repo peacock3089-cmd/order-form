@@ -45,6 +45,7 @@
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="progress.js"></script>
+  <script src="quick.js"></script>
   <script>
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
@@ -74,10 +75,11 @@
         const diff = document.createElement('div'); diff.className = 'diff'; diff.textContent = c.diff;
         const reason = document.createElement('div'); reason.className = 'reason'; reason.textContent = '原因：' + c.reason;
         const row = document.createElement('div'); row.className = 'choice';
-        const note = document.createElement('textarea'); note.className = 'note'; note.placeholder = '說明（駁回必填），例：已經出貨了，不能改';
+        const note = document.createElement('textarea'); note.className = 'note'; note.placeholder = '說明（駁回必填），例：已經出貨了，不能改'; note.oninput = () => { touched = true; };
         [['approve', '👍 核准'], ['reject', '❌ 駁回'], ['skip', '略過']].forEach(([v, label]) => {
           const b = document.createElement('button'); b.type = 'button'; b.className = v; b.textContent = label;
           b.onclick = () => {
+            touched = true;
             choice[c.id] = v;
             row.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
             box.className = 'item' + (v === 'approve' ? ' ok' : v === 'reject' ? ' no' : '');
@@ -95,7 +97,7 @@
     function updateBtn() {
       const n = Object.keys(choice).filter((k) => choice[k] !== 'skip').length;
       $('btn').textContent = n ? '送出審核（' + n + ' 筆）' : '送出審核';
-      $('btn').disabled = !n;
+      $('btn').disabled = !n || !READY; // 拿到最新清單前不能送出（畫面上可能是手機存的舊資料）
     }
 
     // ---- 電腦版：複製審核編號 ----
@@ -124,7 +126,13 @@
       return !t || !t.exp || t.exp * 1000 < Date.now() + minutes * 60000;
     }
 
+    let READY = false;   // 拿到 GAS 最新清單了沒
+    let touched = false; // 開始審了沒（審了就不自動換畫面，免得選的被洗掉）
+
     async function main() {
+      // 先顯示手機上存的待審清單（不用等登入和 GAS）
+      const cached = QuickCache.get('approve');
+      if (cached) { ITEMS = cached; render(); }
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
 
@@ -157,8 +165,12 @@
         body: JSON.stringify({ type: 'approve_list', idToken: liff.getIDToken(), groupId: groupId }) });
       const data = JSON.parse(await res.text());
       if (!data.ok) throw new Error(data.error || '未知錯誤');
-      ITEMS = data.items;
-      render();
+      READY = true;
+      if (QuickCache.set('approve', data.items)) {
+        if (touched) { READY = false; showMsg('⚠️ 待審清單剛有變動（可能別人審過了），請關掉重開再審', true); }
+        else { ITEMS = data.items; render(); }
+      }
+      updateBtn();
     }
 
     $('btn').addEventListener('click', async () => {

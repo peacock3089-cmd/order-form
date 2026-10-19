@@ -100,6 +100,7 @@
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="progress.js"></script>
+  <script src="quick.js"></script>
   <script>
     const LIFF_ID = '2011822642-ulMcTzMV';
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbxspHUq2ruPSPPXkJXkQ_ZsnnD9CkkooMnOlRtZFAT8z8GVLd2pshOhephVznND1s3YZQ/exec';
@@ -224,12 +225,41 @@
     $('invoice').addEventListener('change', showTri);
     $('clearDispatch').onclick = () => { $('dispatchDate').value = ''; };
 
-    async function loadOrders() {
+    let READY = false; // 拿到 GAS 最新的訂單了沒（之前畫面上可能是手機存的舊資料）
+
+    // 畫訂單下拉；已經選好的單如果還在就保留
+    function showOrders(data) {
+      ORDERS = data.orders;
+      OPTS = data.options || OPTS;
       const sel = $('order');
-      sel.disabled = true;
-      sel.innerHTML = '<option value="">載入訂單中…</option>';
+      const keep = sel.value;
+      sel.innerHTML = '';
+      if (!ORDERS.length) {
+        sel.append(new Option('這天沒有你可以修改的訂單', ''));
+        sel.disabled = true;
+        return;
+      }
+      sel.append(new Option('請選擇訂單', ''));
+      ORDERS.forEach((o) => {
+        // 日期已經選了，改顯示出貨方式：同一天同客戶的單才分得出來
+        sel.append(new Option(o.no + '｜' + (o.fields.CUSTOMER || '—') + '｜' + (o.fields.SHIP_METHOD || '未選出貨方式') + (o.pending ? '｜申請中' : ''), String(o.id)));
+      });
+      if (keep && ORDERS.some((o) => String(o.id) === keep)) sel.value = keep;
+      sel.disabled = false;
+    }
+
+    // 先顯示手機上存的這天訂單（有的話），再跟 GAS 拿最新的；有變才換上
+    async function loadOrders() {
+      const date = $('pickDate').value.replace(/-/g, '/');
+      const name = 'orders_' + date;
+      const sel = $('order');
+      READY = false;
       $('form').classList.add('hidden');
       $('pending').textContent = '';
+      sel.value = '';
+      const cached = QuickCache.get(name);
+      if (cached) showOrders(cached);
+      else { sel.disabled = true; sel.innerHTML = '<option value="">載入訂單中…</option>'; }
       // GAS 偶爾回 Google 的錯誤網頁（不是 JSON）：自動再試 2 次
       let data;
       for (let attempt = 0; ; attempt++) {
@@ -237,7 +267,7 @@
           const res = await fetch(GAS_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ type: 'my_orders', idToken: liff.getIDToken(), groupId: groupId, date: $('pickDate').value.replace(/-/g, '/') }),
+            body: JSON.stringify({ type: 'my_orders', idToken: liff.getIDToken(), groupId: groupId, date: date }),
           });
           const text = await res.text();
           data = JSON.parse(text);
@@ -248,21 +278,20 @@
           await new Promise((r) => setTimeout(r, 2000));
         }
       }
-      showMsg('');
       if (!data.ok) throw new Error(data.error);
-      ORDERS = data.orders;
-      OPTS = data.options || OPTS;
-      sel.innerHTML = '';
-      if (!ORDERS.length) {
-        sel.append(new Option('這天沒有你可以修改的訂單', ''));
-        return;
+      if ($('pickDate').value.replace(/-/g, '/') !== date) return; // 等的時候又換了日期
+      READY = true;
+      const before = (cached && cached.orders || []).find((o) => String(o.id) === sel.value);
+      if (QuickCache.set(name, { orders: data.orders, options: data.options })) {
+        const after = data.orders.find((o) => String(o.id) === sel.value);
+        showOrders(data);
+        // 已經選了一張在改，剛好那張被別人動過 → 請他重選，免得照舊內容改
+        if (before && JSON.stringify(before) !== JSON.stringify(after)) {
+          sel.value = '';
+          $('form').classList.add('hidden');
+          showMsg('⚠️ 你選的訂單剛有變動，請重新選一次', true);
+        }
       }
-      sel.append(new Option('請選擇訂單', ''));
-      ORDERS.forEach((o) => {
-        // 日期已經選了，改顯示出貨方式：同一天同客戶的單才分得出來
-        sel.append(new Option(o.no + '｜' + (o.fields.CUSTOMER || '—') + '｜' + (o.fields.SHIP_METHOD || '未選出貨方式') + (o.pending ? '｜申請中' : ''), String(o.id)));
-      });
-      sel.disabled = false;
     }
 
     // ---- 電腦版：複製改單編號 ----
@@ -294,6 +323,12 @@
     }
 
     async function main() {
+      // 日期先定好（今天），並先顯示手機上存的這天訂單（不用等登入和 GAS）
+      const today = new Date().toLocaleDateString('sv-SE');
+      $('pickDate').value = today;
+      $('pickDate').min = today; // 只能改今天或之後出貨的訂單
+      const cached = QuickCache.get('orders_' + today.replace(/-/g, '/'));
+      if (cached) showOrders(cached);
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
 
@@ -322,9 +357,6 @@
 
       const profile = await liff.getProfile();
       $('who').textContent = '申請人：' + profile.displayName;
-      const today = new Date().toLocaleDateString('sv-SE');
-      $('pickDate').value = today;
-      $('pickDate').min = today; // 只能改今天或之後出貨的訂單
       $('pickDate').addEventListener('change', () => {
         if (!$('pickDate').value) return;
         if ($('pickDate').value < today) { $('pickDate').value = today; showMsg('只能改今天或之後出貨的訂單', true); }
@@ -339,6 +371,7 @@
         showMsg('表單開太久，登入已過期。請按右上角 ⋮ →「重新整理」後再填一次（這筆還沒送出）', true);
         return;
       }
+      if (!READY) { showMsg('訂單資料更新中，請等一秒再按', true); return; }
       const o = ORDERS.find((x) => String(x.id) === $('order').value);
       if (!o) return;
       const cancel = $('cancel').checked;
