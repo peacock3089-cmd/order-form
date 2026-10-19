@@ -233,12 +233,47 @@
     }
 
     let READY = false;   // 拿到 GAS 最新清單了沒
-    let touched = false; // 使用者開始勾／改了沒（勾了就不自動換畫面，免得勾的被洗掉）
+    let touched = false; // 使用者開始勾／改了沒（勾了的話，換新清單時要把勾的、改的帶過去）
 
     function showList(data) {
       if (data.options) OPTS = data.options;
       ORDERS = data.orders;
       render();
+    }
+
+    // 換上最新清單，但保留已勾的、已打開修改的內容（用訂單對應）
+    //   不在清單了（改日期／取消）或剛被別人確認出貨的 → 取消勾選並提醒
+    function refreshKeepingPicks(data) {
+      const prev = {};
+      ORDERS.forEach((o) => { prev[o.id] = o; });
+      const saved = {};
+      document.querySelectorAll('.order').forEach((c) => {
+        const open = !c.querySelector('.edit').classList.contains('hidden');
+        saved[c.dataset.id] = { checked: c.querySelector('.pick').checked, open: open,
+          rows: open ? readRows(c.querySelector('.rowsBox')) : null, reason: c.querySelector('.reason').value };
+      });
+      showList(data);
+      const notes = [];
+      Object.keys(saved).forEach((id) => {
+        const s = saved[id];
+        if (!s.checked && !s.open) return;
+        const c = document.querySelector('.order[data-id="' + id + '"]');
+        const o = ORDERS.find((x) => String(x.id) === id);
+        const no = prev[id] ? prev[id].no : '#' + id;
+        if (!c || !o) { notes.push(no + ' 已不在這天的清單（可能改了日期或取消）'); return; }
+        if (o.shipped && !(prev[id] && prev[id].shipped)) { notes.push(no + ' 剛被' + (o.shipped.by || '別人') + '確認出貨了，已取消勾選'); return; }
+        if (s.open) {
+          c.querySelector('.swap').onclick();
+          const box = c.querySelector('.rowsBox');
+          box.innerHTML = '';
+          (s.rows.length ? s.rows : [null]).forEach((r) => addRow(box, r));
+          c.querySelector('.reason').value = s.reason;
+        }
+        c.querySelector('.pick').checked = s.checked;
+        c.classList.toggle('on', s.checked);
+      });
+      updateBtn();
+      if (notes.length) showMsg('清單已更新：\n' + notes.join('\n'), true);
     }
 
     // 先顯示手機上存的這一天清單（有的話），再跟 GAS 拿最新的；有變才換上
@@ -254,7 +289,7 @@
       if (!data.options) data.options = OPTS;
       READY = true;
       if (QuickCache.set(name, { orders: data.orders, options: data.options })) {
-        if (touched) { READY = false; showMsg('⚠️ 這天的清單剛有變動，請關掉重開再勾，避免勾到舊資料', true); }
+        if (touched) refreshKeepingPicks(data);
         else showList(data);
       }
       updateBtn();

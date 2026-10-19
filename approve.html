@@ -127,7 +127,26 @@
     }
 
     let READY = false;   // 拿到 GAS 最新清單了沒
-    let touched = false; // 開始審了沒（審了就不自動換畫面，免得選的被洗掉）
+    let touched = false; // 開始審了沒（審了的話，換新清單時要把選的、寫的帶過去）
+
+    // 換上最新清單，保留已選的核准／駁回和寫的說明；已經不在清單（別人審過了）的提醒一下
+    function refreshKeepingChoices(items) {
+      const prev = {};
+      ITEMS.forEach((c) => { prev[c.id] = c.orderNo; });
+      const notes = {};
+      document.querySelectorAll('.item').forEach((box) => { notes[box.dataset.id] = box.querySelector('.note').value; });
+      ITEMS = items;
+      const gone = Object.keys(choice).filter((id) => choice[id] !== 'skip' && !items.some((c) => String(c.id) === id));
+      gone.forEach((id) => { delete choice[id]; });
+      render();
+      document.querySelectorAll('.item').forEach((box) => {
+        if (notes[box.dataset.id]) box.querySelector('.note').value = notes[box.dataset.id];
+        const v = choice[box.dataset.id];
+        box.className = 'item' + (v === 'approve' ? ' ok' : v === 'reject' ? ' no' : '');
+      });
+      updateBtn();
+      if (gone.length) showMsg('清單已更新：' + gone.map((id) => prev[id] || '#' + id).join('、') + ' 已經被別人審過了', true);
+    }
 
     async function main() {
       // 先顯示手機上存的待審清單（不用等登入和 GAS）
@@ -167,7 +186,7 @@
       if (!data.ok) throw new Error(data.error || '未知錯誤');
       READY = true;
       if (QuickCache.set('approve', data.items)) {
-        if (touched) { READY = false; showMsg('⚠️ 待審清單剛有變動（可能別人審過了），請關掉重開再審', true); }
+        if (touched) refreshKeepingChoices(data.items);
         else { ITEMS = data.items; render(); }
       }
       updateBtn();

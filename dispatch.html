@@ -137,13 +137,31 @@
       if ($('from').value.replace(/-/g, '/') !== from || $('to').value.replace(/-/g, '/') !== to) return; // 等的時候又換了日期
       READY = true;
       if (QuickCache.set(name, data.orders)) {
-        if (touched) { READY = false; showMsg('⚠️ 清單剛有變動，請關掉重開再勾，避免勾到已經派過的單', true); }
+        if (touched) refreshKeepingPicks(data.orders);
         else { ORDERS = data.orders; render(); }
       }
       updateBtn();
     }
     let READY = false;   // 拿到 GAS 最新清單了沒
-    let touched = false; // 使用者開始勾了沒（勾了就不自動換畫面）
+    let touched = false; // 使用者開始勾了沒（勾了的話，換新清單時要把勾的帶過去）
+
+    // 換上最新清單，保留已勾的；已經不在清單（被別人派車、改日期、取消）的提醒一下
+    function refreshKeepingPicks(orders) {
+      const prev = {};
+      ORDERS.forEach((o) => { prev[o.id] = o.no; });
+      const checked = picked().map((c) => c.dataset.id);
+      ORDERS = orders;
+      render();
+      const gone = [];
+      checked.forEach((id) => {
+        const c = document.querySelector('.order[data-id="' + id + '"]');
+        if (!c) { gone.push(prev[id] || '#' + id); return; }
+        c.querySelector('.pick').checked = true;
+        c.classList.add('on');
+      });
+      updateBtn();
+      if (gone.length) showMsg('清單已更新：' + gone.join('、') + ' 已不在清單（可能別人派車了），已取消勾選', true);
+    }
     ['from', 'to'].forEach((id) => $(id).addEventListener('change', () => loadList().catch((e) => showMsg('讀取失敗：' + e.message, true))));
 
     // ---- 電腦版：複製派車編號 ----
